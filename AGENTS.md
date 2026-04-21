@@ -663,13 +663,13 @@ GET /api/health
 ### Как запускать тестовый контур
 - Backend:
 ```bash
-cd "/Users/vicmb/Yandex.Disk.localized/РТК Сервис/RTS_Web/Tests/backend"
+cd "/path/to/RTS_Web/Tests/backend"
 pip install -r ../../backend/requirements.txt -r requirements-test.txt
 pytest -v
 ```
 - Frontend:
 ```bash
-cd "/Users/vicmb/Yandex.Disk.localized/РТК Сервис/RTS_Web/Tests/frontend"
+cd "/path/to/RTS_Web/Tests/frontend"
 npm install
 npm test
 ```
@@ -789,13 +789,13 @@ npm test
 ## Полезные команды
 ```bash
 # Локально: push
-cd "/Users/vicmb/Yandex.Disk.localized/РТК Сервис/RTS_Web"
+cd "/path/to/RTS_Web"
 git push origin main
 
 # Локально: деплой кода на VPS
 rsync -avz --exclude '.git' --exclude '__pycache__' --exclude '*.pyc' \
   --exclude '.DS_Store' --exclude '.env' --exclude '.Codex' \
-  "/Users/vicmb/Yandex.Disk.localized/РТК Сервис/RTS_Web/" \
+  "/path/to/RTS_Web/" \
   <vps-alias>:~/network-tracker/
 
 # Локально: frontend-only деплой
@@ -833,7 +833,7 @@ ssh <vps-alias> "cd ~/network-tracker/Tests/frontend && npm test"
 rsync -az --delete --exclude '.git' --exclude 'Tests/backend/.venv' \
   --exclude 'Tests/frontend/node_modules' --exclude 'Tests/.claude' \
   --exclude '__pycache__' --exclude '*.pyc' \
-  "/Users/vicmb/Yandex.Disk.localized/РТК Сервис/RTS_Web/" \
+  "/path/to/RTS_Web/" \
   <vps-alias>:/tmp/rts-web-codex-check/
 # после копирования использовать на VPS подтверждённый backend runner:
 # PYTHONPATH=~/network-tracker/backend /tmp/rts-web-codex-venv/bin/pytest -q

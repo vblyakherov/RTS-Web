@@ -7,7 +7,7 @@
 Он должен быть создан вручную в Microsoft Excel на Windows и содержать:
 
 - лист `Data`
-- VBA-модули из `/Users/vicmb/Yandex.Disk.localized/РТК Сервис/RTS_Web/vba`
+- VBA-модули из каталога `vba/` в корне репозитория
 - код из `SheetData.cls` в листе `Data`
 - код из `ThisWorkbook.cls` в `ThisWorkbook`
 - reference на `Microsoft Scripting Runtime`
