@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RTKS Tracker — Объект</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1100;margin-top:60px;"></div>
+
+<div class="page-content">
+
+    <!-- Шапка -->
+    <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+        <a href="/index.html" class="btn btn-sm btn-outline-secondary" id="backToProjectLink">
+            <i class="bi bi-arrow-left me-1"></i>Назад
+        </a>
+        <div id="siteHeader" class="flex-grow-1">
+            <div class="placeholder-glow">
+                <span class="placeholder col-4"></span>
+            </div>
+        </div>
+        <div class="action-bar" id="actionBar"></div>
+    </div>
+
+    <!-- Основная форма -->
+    <div class="row g-3" id="siteContent" style="display:none!important;">
+
+        <!-- Левая колонка -->
+        <div class="col-lg-8">
+
+            <!-- Основная информация -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="detail-section-title">Основная информация</div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">ID объекта</label>
+                            <div id="f_site_id" class="form-control-plaintext-styled fw-mono text-primary"></div>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small text-muted">Наименование НП</label>
+                            <input type="text" class="form-control editable" id="f_name" name="name">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted">Регион</label>
+                            <select class="form-select editable manager-field" id="f_region_id" name="region_id">
+                                <option value="">— не выбран —</option>
+                            </select>
+                            <div id="f_region_hint" class="form-text d-none"></div>
+                            <div id="f_region_readonly" class="form-control-plaintext-styled d-none"></div>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label small text-muted">Локация</label>
+                            <input type="text" class="form-control editable" id="f_address" name="address" placeholder="Район, сельское поселение, НП">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Сроки -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="detail-section-title">Сроки</div>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Плановый старт</label>
+                            <input type="date" class="form-control editable manager-field" id="f_planned_start" name="planned_start">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Плановый конец</label>
+                            <input type="date" class="form-control editable manager-field" id="f_planned_end" name="planned_end">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Фактический старт</label>
+                            <input type="date" class="form-control editable" id="f_actual_start" name="actual_start">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted">Фактический конец</label>
+                            <input type="date" class="form-control editable" id="f_actual_end" name="actual_end">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Заметки -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="detail-section-title">Заметки</div>
+                    <textarea class="form-control editable" id="f_notes" name="notes" rows="4" placeholder="Дополнительная информация..."></textarea>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Правая колонка -->
+        <div class="col-lg-4">
+
+            <!-- Статус и подрядчик -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="detail-section-title">Статус и назначение</div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Статус</label>
+                        <select class="form-select editable" id="f_status" name="status">
+                            <option value="planned">Запланирован</option>
+                            <option value="survey">Обследование</option>
+                            <option value="design">Проектирование</option>
+                            <option value="permitting">Разрешения</option>
+                            <option value="construction">Строительство</option>
+                            <option value="testing">Тестирование</option>
+                            <option value="accepted">Принят</option>
+                            <option value="cancelled">Отменён</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label small text-muted">Подрядчик</label>
+                        <select class="form-select editable manager-field" id="f_contractor_id" name="contractor_id">
+                            <option value="">— не назначен —</option>
+                        </select>
+                        <div id="f_contractor_hint" class="form-text d-none"></div>
+                        <div id="f_contractor_readonly" class="form-control-plaintext-styled d-none"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Координаты -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="detail-section-title">Координаты</div>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Широта</label>
+                            <input type="number" step="any" class="form-control editable manager-field" id="f_latitude" name="latitude" placeholder="59.9311">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Долгота</label>
+                            <input type="number" step="any" class="form-control editable manager-field" id="f_longitude" name="longitude" placeholder="30.3609">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Мета -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="detail-section-title">Информация</div>
+                    <dl class="row mb-0 small">
+                        <dt class="col-5 text-muted fw-normal">Создан</dt>
+                        <dd class="col-7" id="meta_created">—</dd>
+                        <dt class="col-5 text-muted fw-normal">Обновлён</dt>
+                        <dd class="col-7" id="meta_updated">—</dd>
+                        <dt class="col-5 text-muted fw-normal">ID в системе</dt>
+                        <dd class="col-7 fw-mono" id="meta_id">—</dd>
+                    </dl>
+                </div>
+            </div>
+
+        </div>
+    </div><!-- /row -->
+
+    <!-- Спиннер загрузки -->
+    <div id="loadingState" class="text-center py-5">
+        <div class="spinner-border text-primary"></div>
+    </div>
+
+    <!-- Ошибка загрузки -->
+    <div id="errorState" class="alert alert-danger d-none">
+        <i class="bi bi-exclamation-triangle me-2"></i><span id="errorText"></span>
+    </div>
+
+</div><!-- /page-content -->
+
+<!-- Подтверждение удаления -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-danger">
+                    <i class="bi bi-trash me-2"></i>Удалить объект?
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Объект <strong id="deleteTargetName"></strong> будет удалён безвозвратно.
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">
+                    <i class="bi bi-trash me-1"></i>Удалить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- История изменений -->
+<div class="modal fade" id="historyModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title">
+                        <i class="bi bi-clock-history me-2"></i>История изменений
+                    </h5>
+                    <div class="small text-muted">
+                        Просмотр изменений и rollback для администратора
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 ms-auto me-3">
+                    <span class="badge text-bg-light border" id="historyCounter">—</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadHistory()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Обновить
+                    </button>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning small py-2">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Откат группы отменяет именно этот пакет изменений. Откат объекта к моменту времени более сильный и может отменить более поздние правки.
+                </div>
+
+                <div id="historyLoading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+
+                <div id="historyEmpty" class="alert alert-light border d-none">
+                    История изменений для этого объекта пока пуста.
+                </div>
+
+                <div id="historyList" class="accordion history-accordion"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+let currentUser = null;
+let site        = null;
+let siteId      = null;
+let currentProject = null;
+let isEditing   = false;
+let contractors = [];
+let regions     = [];
+let contractorNameById = {};
+let regionNameById     = {};
+let historyFieldMap    = null;
+let historyGroups      = [];
+let historyEntriesById = {};
+const SITE_PAGE_FLASH_KEY = 'site_page_flash';
+
+// Что может редактировать contractor
+const CONTRACTOR_EDITABLE = ['f_status', 'f_actual_start', 'f_actual_end', 'f_notes'];
+const HISTORY_PAGE_SIZE = 200;
+const DATE_ONLY_HISTORY_FIELDS = new Set([
+    'planned_start', 'planned_end', 'actual_start', 'actual_end',
+]);
+
+async function init() {
+    currentUser = await checkAuth();
+    if (!currentUser) return;
+
+    const params = new URLSearchParams(window.location.search);
+    siteId = params.get('id');
+    if (!siteId) {
+        showError('Не указан ID объекта');
+        return;
+    }
+
+    const projectId = params.get('project_id') || api.getCurrentProject()?.id;
+    if (projectId) {
+        try {
+            currentProject = await api.getProject(projectId);
+            rememberProject(currentProject);
+        } catch {}
+    }
+
+    mountNavbar(currentUser, 'sites');
+    bindAppModalDismissals(document);
+    updateProjectBackLink();
+    consumeSitePageFlash();
+
+    // Загружаем регионы (все роли — для отображения)
+    try {
+        regions = await api.getRegions(true);
+        const regSel = document.getElementById('f_region_id');
+        regions.forEach(r => {
+            regionNameById[String(r.id)] = r.name;
+            regSel.insertAdjacentHTML('beforeend',
+                `<option value="${r.id}">${escHtml(r.name)}</option>`);
+        });
+    } catch {}
+
+    // Загружаем подрядчиков (admin/manager)
+    if (['admin', 'manager'].includes(currentUser.role)) {
+        try {
+            contractors = await api.getContractors(true);
+            const sel = document.getElementById('f_contractor_id');
+            contractors.forEach(c => {
+                contractorNameById[String(c.id)] = c.name;
+                sel.insertAdjacentHTML('beforeend',
+                    `<option value="${c.id}">${escHtml(c.name)}</option>`);
+            });
+        } catch {}
+    }
+
+    await loadSite();
+}
+
+function setSitePageFlash(message, type = 'success') {
+    try {
+        sessionStorage.setItem(SITE_PAGE_FLASH_KEY, JSON.stringify({ message, type }));
+    } catch {}
+}
+
+function consumeSitePageFlash() {
+    try {
+        const raw = sessionStorage.getItem(SITE_PAGE_FLASH_KEY);
+        if (!raw) return;
+        sessionStorage.removeItem(SITE_PAGE_FLASH_KEY);
+        const flash = JSON.parse(raw);
+        if (flash?.message) {
+            showToast(flash.message, flash.type || 'success');
+        }
+    } catch {}
+}
+
+async function loadSite() {
+    try {
+        site = await api.getSite(siteId);
+        renderSite(site);
+    } catch (err) {
+        showError(err.message);
+    }
+}
+
+function ensureSelectOption(selectId, value, label) {
+    if (value == null || value === '') return;
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const stringValue = String(value);
+    const exists = Array.from(select.options).some(option => option.value === stringValue);
+    if (!exists) {
+        select.insertAdjacentHTML('beforeend', `<option value="${stringValue}">${escHtml(label)}</option>`);
+    }
+}
+
+function renderSite(s) {
+    if (s.project) {
+        currentProject = s.project;
+        rememberProject(currentProject);
+        mountNavbar(currentUser, 'sites');
+        updateProjectBackLink();
+    }
+
+    document.title = `${s.site_id} — RTKS Tracker`;
+
+    // Шапка
+    document.getElementById('siteHeader').innerHTML = `
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <h5 class="mb-0 fw-bold fw-mono text-primary">${escHtml(s.site_id)}</h5>
+            <span class="text-muted">—</span>
+            <h5 class="mb-0">${escHtml(s.name)}</h5>
+            ${statusBadge(s.status)}
+        </div>`;
+
+    // Основные поля
+    document.getElementById('f_site_id').textContent = s.site_id;
+    document.getElementById('f_name').value    = s.name || '';
+    document.getElementById('f_address').value = s.address || '';
+
+    // Регион
+    const regionName = s.region_rel ? s.region_rel.name : (s.region || '—');
+    const regionHint = document.getElementById('f_region_hint');
+    if (['admin', 'manager'].includes(currentUser.role)) {
+        ensureSelectOption('f_region_id', s.region_id, regionName);
+        document.getElementById('f_region_id').value = s.region_id || '';
+        document.getElementById('f_region_readonly').classList.add('d-none');
+        document.getElementById('f_region_id').classList.remove('d-none');
+        if (!s.region_id && regionName !== '—') {
+            regionHint.textContent = `Текущее значение в данных: ${regionName}`;
+            regionHint.classList.remove('d-none');
+        } else {
+            regionHint.textContent = '';
+            regionHint.classList.add('d-none');
+        }
+    } else {
+        document.getElementById('f_region_readonly').textContent = regionName;
+        document.getElementById('f_region_readonly').classList.remove('d-none');
+        document.getElementById('f_region_id').classList.add('d-none');
+        regionHint.classList.add('d-none');
+    }
+    document.getElementById('f_notes').value   = s.notes || '';
+
+    // Статус
+    document.getElementById('f_status').value = s.status;
+
+    // Подрядчик
+    const contractorName = s.contractor ? s.contractor.name : '— не назначен —';
+    const contractorHint = document.getElementById('f_contractor_hint');
+    if (['admin', 'manager'].includes(currentUser.role)) {
+        ensureSelectOption('f_contractor_id', s.contractor_id, contractorName);
+        document.getElementById('f_contractor_id').value = s.contractor_id || '';
+        document.getElementById('f_contractor_readonly').classList.add('d-none');
+        document.getElementById('f_contractor_id').classList.remove('d-none');
+        contractorHint.classList.add('d-none');
+    } else {
+        document.getElementById('f_contractor_readonly').textContent = contractorName;
+        document.getElementById('f_contractor_readonly').classList.remove('d-none');
+        document.getElementById('f_contractor_id').classList.add('d-none');
+        contractorHint.classList.add('d-none');
+    }
+
+    // Даты
+    document.getElementById('f_planned_start').value = toDateInputValue(s.planned_start);
+    document.getElementById('f_planned_end').value   = toDateInputValue(s.planned_end);
+    document.getElementById('f_actual_start').value  = toDateInputValue(s.actual_start);
+    document.getElementById('f_actual_end').value    = toDateInputValue(s.actual_end);
+
+    // Координаты
+    document.getElementById('f_latitude').value  = s.latitude  ?? '';
+    document.getElementById('f_longitude').value = s.longitude ?? '';
+
+    // Мета
+    document.getElementById('meta_created').textContent = formatDateTime(s.created_at);
+    document.getElementById('meta_updated').textContent = formatDateTime(s.updated_at);
+    document.getElementById('meta_id').textContent      = s.id;
+
+    // Показываем контент
+    document.getElementById('loadingState').classList.add('d-none');
+    document.getElementById('siteContent').style.display = '';
+    document.getElementById('siteContent').style.removeProperty('display');
+    document.getElementById('siteContent').classList.remove('d-none');
+
+    // Применяем режим (readonly по умолчанию)
+    setEditMode(false);
+    renderActionBar();
+}
+
+function renderActionBar() {
+    const bar  = document.getElementById('actionBar');
+    const role = currentUser.role;
+    const canEdit   = ['admin', 'manager', 'contractor'].includes(role);
+    const canDelete = role === 'admin';
+    const canViewHistory = role === 'admin';
+
+    if (!canEdit) { bar.innerHTML = ''; return; }
+
+    if (!isEditing) {
+        bar.innerHTML = `
+            ${canViewHistory ? `
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openHistoryModal()">
+                <i class="bi bi-clock-history me-1"></i>История
+            </button>` : ''}
+            <button type="button" class="btn btn-sm btn-primary" onclick="startEdit()">
+                <i class="bi bi-pencil me-1"></i>Редактировать
+            </button>
+            ${canDelete ? `
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="openDeleteModal()">
+                <i class="bi bi-trash me-1"></i>Удалить
+            </button>` : ''}`;
+    } else {
+        bar.innerHTML = `
+            <button type="button" class="btn btn-sm btn-success" onclick="saveChanges()">
+                <i class="bi bi-check-lg me-1"></i>Сохранить
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="cancelEdit()">
+                Отмена
+            </button>`;
+    }
+}
+
+async function ensureHistoryMeta() {
+    if (historyFieldMap) return;
+    const items = await api.getHistoryFields();
+    historyFieldMap = {};
+    items.forEach(item => {
+        historyFieldMap[item.field_name] = item;
+    });
+}
+
+async function openHistoryModal() {
+    if (!site || currentUser.role !== 'admin') return;
+    if (!showAppModal('historyModal')) {
+        showToast('Не удалось открыть окно истории', 'danger');
+        return;
+    }
+    try {
+        await loadHistory();
+    } catch (err) {
+        console.error('Failed to open history modal', err);
+        showToast(err.message || 'Не удалось загрузить историю', 'danger');
+    }
+}
+
+function setHistoryLoading(isLoading) {
+    document.getElementById('historyLoading').classList.toggle('d-none', !isLoading);
+    document.getElementById('historyList').classList.toggle('d-none', isLoading);
+    document.getElementById('historyEmpty').classList.add('d-none');
+}
+
+async function loadHistory() {
+    if (!site || currentUser.role !== 'admin') return;
+
+    setHistoryLoading(true);
+    try {
+        await ensureHistoryMeta();
+        const response = await api.getSiteHistory(site.id, {
+            page: 1,
+            page_size: HISTORY_PAGE_SIZE,
+        });
+        renderHistory(response);
+    } catch (err) {
+        document.getElementById('historyLoading').classList.add('d-none');
+        document.getElementById('historyList').classList.add('d-none');
+        document.getElementById('historyEmpty').classList.remove('d-none');
+        document.getElementById('historyEmpty').innerHTML =
+            `<i class="bi bi-exclamation-triangle me-2"></i>${escHtml(err.message)}`;
+    }
+}
+
+function renderHistory(response) {
+    const list = document.getElementById('historyList');
+    const empty = document.getElementById('historyEmpty');
+    document.getElementById('historyLoading').classList.add('d-none');
+    list.classList.remove('d-none');
+
+    historyEntriesById = Object.fromEntries(response.items.map(item => [item.id, item]));
+    historyGroups = groupHistoryItems(response.items);
+    document.getElementById('historyCounter').textContent =
+        `${response.items.length} из ${response.total}`;
+
+    if (!historyGroups.length) {
+        list.innerHTML = '';
+        empty.textContent = 'История изменений для этого объекта пока пуста.';
+        empty.classList.remove('d-none');
+        return;
+    }
+
+    empty.classList.add('d-none');
+    list.innerHTML = historyGroups.map((group, index) => renderHistoryGroup(group, index)).join('');
+}
+
+function groupHistoryItems(items) {
+    const map = new Map();
+
+    items.forEach(item => {
+        const key = item.sync_batch_id || `entry-${item.id}`;
+        if (!map.has(key)) {
+            map.set(key, {
+                key,
+                batchId: item.sync_batch_id,
+                changedAt: item.changed_at,
+                username: item.username || 'Система',
+                items: [],
+            });
+        }
+
+        const group = map.get(key);
+        group.items.push(item);
+        if (new Date(item.changed_at) > new Date(group.changedAt)) {
+            group.changedAt = item.changed_at;
+        }
+    });
+
+    return Array.from(map.values())
+        .map(group => ({
+            ...group,
+            items: group.items.sort((a, b) => a.field_name.localeCompare(b.field_name, 'ru')),
+        }))
+        .sort((a, b) => new Date(b.changedAt) - new Date(a.changedAt));
+}
+
+function renderHistoryGroup(group, index) {
+    const collapseId = `historyCollapse${index}`;
+    const headingId = `historyHeading${index}`;
+    const batchInfo = getBatchInfo(group.batchId);
+
+    return `
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="${headingId}">
+                <button class="accordion-button collapsed" type="button"
+                        aria-expanded="false" aria-controls="${collapseId}"
+                        onclick="toggleHistoryGroup(${index})">
+                    <div class="w-100 pe-3">
+                        <div class="history-group-meta">
+                            <span class="badge ${batchInfo.badgeClass} batch-label">${batchInfo.label}</span>
+                            <span><i class="bi bi-clock me-1"></i>${formatDateTime(group.changedAt)}</span>
+                            <span><i class="bi bi-person me-1"></i>${escHtml(group.username)}</span>
+                            <span class="text-muted">${group.items.length} полей</span>
+                        </div>
+                    </div>
+                </button>
+            </h2>
+            <div id="${collapseId}" class="accordion-collapse collapse" aria-labelledby="${headingId}">
+                <div class="accordion-body">
+                    <div class="d-flex flex-wrap gap-2 justify-content-end mb-3">
+                        ${group.batchId ? `
+                        <button type="button" class="btn btn-sm btn-outline-warning" onclick="rollbackHistoryBatch(${index})">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Откатить группу
+                        </button>` : ''}
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="rollbackSiteToMoment(${index})">
+                            <i class="bi bi-clock-history me-1"></i>Откатить объект к этому моменту
+                        </button>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm history-diff-table align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:22%;">Поле</th>
+                                    <th style="width:30%;">Было</th>
+                                    <th style="width:30%;">Стало</th>
+                                    <th style="width:18%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${group.items.map(item => renderHistoryRow(item)).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+}
+
+function renderHistoryRow(item) {
+    const meta = historyFieldMap?.[item.field_name];
+    const label = meta?.label || item.field_name;
+
+    return `
+        <tr>
+            <td>
+                <div class="fw-semibold">${escHtml(label)}</div>
+                <div class="text-muted history-field-name">${escHtml(item.field_name)}</div>
+            </td>
+            <td><div class="history-value">${formatHistoryValue(item.field_name, item.old_value)}</div></td>
+            <td><div class="history-value">${formatHistoryValue(item.field_name, item.new_value)}</div></td>
+            <td class="text-end">
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="rollbackHistoryEntry(${item.id})">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Откатить поле
+                </button>
+            </td>
+        </tr>`;
+}
+
+function setHistoryGroupExpanded(index, expanded) {
+    const collapse = document.getElementById(`historyCollapse${index}`);
+    const header = document.getElementById(`historyHeading${index}`);
+    const button = header?.querySelector('.accordion-button');
+    if (!collapse || !button) return;
+
+    collapse.classList.toggle('show', expanded);
+    button.classList.toggle('collapsed', !expanded);
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+}
+
+function toggleHistoryGroup(index) {
+    const collapse = document.getElementById(`historyCollapse${index}`);
+    if (!collapse) return;
+
+    const shouldExpand = !collapse.classList.contains('show');
+    historyGroups.forEach((_, groupIndex) => {
+        setHistoryGroupExpanded(groupIndex, false);
+    });
+
+    if (shouldExpand) {
+        setHistoryGroupExpanded(index, true);
+    }
+}
+
+function getBatchInfo(batchId) {
+    if (!batchId) {
+        return { label: 'Legacy', badgeClass: 'text-bg-secondary' };
+    }
+    if (batchId.startsWith('web-create')) {
+        return { label: 'Создание в вебе', badgeClass: 'text-bg-success' };
+    }
+    if (batchId.startsWith('web-update')) {
+        return { label: 'Изменение в вебе', badgeClass: 'text-bg-primary' };
+    }
+    if (batchId.startsWith('excel-import')) {
+        return { label: 'Импорт из файла', badgeClass: 'text-bg-warning' };
+    }
+    if (batchId.startsWith('rollback')) {
+        return { label: 'Rollback', badgeClass: 'text-bg-danger' };
+    }
+    return { label: 'Excel Sync', badgeClass: 'text-bg-info' };
+}
+
+function formatHistoryDateValue(value, withTime = false) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return String(value);
+    }
+    return withTime ? formatDateTime(value) : formatDate(value);
+}
+
+function formatHistoryValue(fieldName, value) {
+    if (value == null || value === '') {
+        return '<span class="text-muted">—</span>';
+    }
+
+    if (fieldName === 'status') {
+        return escHtml(STATUS_LABELS[value] || value);
+    }
+
+    if (fieldName === 'contractor_id') {
+        const label = contractorNameById[String(value)] || `ID ${value}`;
+        return escHtml(label);
+    }
+
+    if (fieldName === 'region_id') {
+        const label = regionNameById[String(value)] || `ID ${value}`;
+        return escHtml(label);
+    }
+
+    const meta = historyFieldMap?.[fieldName];
+    if (meta?.type === 'datetime') {
+        if (DATE_ONLY_HISTORY_FIELDS.has(fieldName)) {
+            return escHtml(formatHistoryDateValue(value));
+        }
+        return escHtml(formatHistoryDateValue(value, true));
+    }
+
+    return escHtml(String(value));
+}
+
+async function rollbackHistoryEntry(historyId) {
+    const entry = historyEntriesById[historyId];
+    if (!entry) return;
+
+    const label = historyFieldMap?.[entry.field_name]?.label || entry.field_name;
+    const ok = confirm(
+        `Откатить поле "${label}" к предыдущему значению?\n\n` +
+        `Это создаст новую запись в истории изменений.`
+    );
+    if (!ok) return;
+
+    try {
+        await api.rollbackHistoryEntry(historyId);
+        showToast(`Поле "${label}" откатили`);
+        await loadSite();
+        await loadHistory();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+async function rollbackHistoryBatch(groupIndex) {
+    const group = historyGroups[groupIndex];
+    if (!group || !group.batchId) return;
+
+    const ok = confirm(
+        `Откатить весь пакет изменений от ${formatDateTime(group.changedAt)}?\n\n` +
+        `Будут отменены поля из этой группы, и это тоже запишется в историю.`
+    );
+    if (!ok) return;
+
+    try {
+        await api.rollbackHistoryBatch(site.site_id, group.batchId);
+        showToast('Пакет изменений откатили');
+        await loadSite();
+        await loadHistory();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+async function rollbackSiteToMoment(groupIndex) {
+    const group = historyGroups[groupIndex];
+    if (!group) return;
+
+    const ok = confirm(
+        `Откатить весь объект к моменту ${formatDateTime(group.changedAt)}?\n\n` +
+        `Это более сильное действие: могут отмениться и более поздние правки.`
+    );
+    if (!ok) return;
+
+    try {
+        await api.rollbackSite(site.site_id, group.changedAt);
+        showToast('Объект откатили к выбранному моменту');
+        await loadSite();
+        await loadHistory();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+function setEditMode(editing) {
+    isEditing = editing;
+    const role = currentUser.role;
+
+    // Все editable поля
+    document.querySelectorAll('.editable').forEach(el => {
+        el.disabled = !editing;
+    });
+
+    if (!editing) return;
+
+    // Contractor может редактировать только свои поля
+    if (role === 'contractor') {
+        // Сначала блокируем всё
+        document.querySelectorAll('.editable').forEach(el => { el.disabled = true; });
+        // Разблокируем только разрешённые
+        CONTRACTOR_EDITABLE.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = false;
+        });
+    }
+
+    // Manager не может менять координаты (optional — по бизнес-логике всё ok, оставляем)
+}
+
+function startEdit() {
+    setEditMode(true);
+    renderActionBar();
+    // Фокус на первое редактируемое поле
+    const first = document.querySelector('.editable:not([disabled])');
+    if (first) first.focus();
+}
+
+function cancelEdit() {
+    renderSite(site); // перерисовываем с исходными данными
+}
+
+async function saveChanges() {
+    const role = currentUser.role;
+    const data = {};
+
+    const getVal = id => {
+        const el = document.getElementById(id);
+        return el ? el.value.trim() : null;
+    };
+    const getDate = id => {
+        const v = getVal(id);
+        return v ? new Date(v).toISOString() : null;
+    };
+
+    if (role === 'contractor') {
+        // Только разрешённые поля
+        data.status       = getVal('f_status');
+        data.actual_start = getDate('f_actual_start');
+        data.actual_end   = getDate('f_actual_end');
+        data.notes        = getVal('f_notes') || null;
+    } else {
+        // admin / manager — все поля
+        data.name          = getVal('f_name');
+        data.address       = getVal('f_address') || null;
+        data.status        = getVal('f_status');
+        data.planned_start = getDate('f_planned_start');
+        data.planned_end   = getDate('f_planned_end');
+        data.actual_start  = getDate('f_actual_start');
+        data.actual_end    = getDate('f_actual_end');
+        data.notes         = getVal('f_notes') || null;
+
+        const rid = document.getElementById('f_region_id')?.value;
+        data.region_id = rid ? parseInt(rid) : null;
+
+        const cid = document.getElementById('f_contractor_id')?.value;
+        data.contractor_id = cid ? parseInt(cid) : null;
+
+        const lat = document.getElementById('f_latitude')?.value;
+        const lng = document.getElementById('f_longitude')?.value;
+        data.latitude  = lat  ? parseFloat(lat)  : null;
+        data.longitude = lng ? parseFloat(lng) : null;
+    }
+
+    // Убираем null-значения чтобы не затирать ненужное
+    Object.keys(data).forEach(k => { if (data[k] === null) data[k] = null; });
+
+    try {
+        await api.updateSite(siteId, data);
+        setSitePageFlash('Изменения сохранены');
+        window.location.replace(window.location.pathname + window.location.search);
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+// ---- Удаление ----
+function openDeleteModal() {
+    document.getElementById('deleteTargetName').textContent =
+        `"${site.site_id} — ${site.name}"`;
+    if (!showAppModal('deleteModal')) {
+        showToast('Не удалось открыть подтверждение удаления', 'danger');
+    }
+}
+
+async function confirmDelete() {
+    try {
+        await api.deleteSite(siteId);
+        hideAppModal('deleteModal');
+        showToast('Объект удалён');
+        setTimeout(() => { window.location.href = getProjectRoute(currentProject); }, 1000);
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+function updateProjectBackLink() {
+    const link = document.getElementById('backToProjectLink');
+    if (!link) return;
+    link.href = getProjectRoute(currentProject);
+    link.innerHTML = currentProject
+        ? '<i class="bi bi-arrow-left me-1"></i>К проекту'
+        : '<i class="bi bi-arrow-left me-1"></i>Назад';
+}
+
+function showError(msg) {
+    document.getElementById('loadingState').classList.add('d-none');
+    document.getElementById('errorText').textContent = msg;
+    document.getElementById('errorState').classList.remove('d-none');
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

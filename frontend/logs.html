@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RTKS Tracker — Логи</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1100;margin-top:60px;"></div>
+
+<div class="page-content">
+
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-journal-text me-2"></i>Журнал действий</h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadLogs()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Обновить
+        </button>
+    </div>
+
+    <!-- Фильтры -->
+    <div class="card mb-3 shadow-sm">
+        <div class="card-body py-2 px-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="filterAction">
+                        <option value="">Все действия</option>
+                        <option value="login">Вход</option>
+                        <option value="user_create">Создание пользователя</option>
+                        <option value="user_update">Изменение пользователя</option>
+                        <option value="user_delete">Удаление пользователя</option>
+                        <option value="site_create">Создание объекта</option>
+                        <option value="site_update">Изменение объекта</option>
+                        <option value="site_delete">Удаление объекта</option>
+                        <option value="excel_export">Экспорт Excel</option>
+                        <option value="excel_import">Импорт Excel</option>
+                        <option value="rollback">Откат изменений</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select class="form-select form-select-sm" id="filterUser">
+                        <option value="">Все пользователи</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select class="form-select form-select-sm" id="filterPageSize">
+                        <option value="50">50 записей</option>
+                        <option value="100" selected>100 записей</option>
+                        <option value="200">200 записей</option>
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex gap-2">
+                    <button class="btn btn-sm btn-primary" onclick="applyFilters()">
+                        <i class="bi bi-funnel me-1"></i>Применить
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()">
+                        <i class="bi bi-x-circle me-1"></i>Сбросить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3" style="width:150px;">Дата/Время</th>
+                            <th style="width:130px;">Пользователь</th>
+                            <th style="width:170px;">Действие</th>
+                            <th style="width:110px;">Объект</th>
+                            <th>Детали</th>
+                            <th style="width:120px;">IP-адрес</th>
+                            <th style="width:32px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <div class="spinner-border text-primary"></div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer py-2">
+            <span class="text-muted small" id="logsInfo">—</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- Модал деталей лога -->
+<div class="modal fade" id="logDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-info-circle me-2"></i>Детали записи</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="logDetailBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+let currentUser = null;
+let allLogs     = [];
+
+async function init() {
+    currentUser = await checkAuth();
+    if (!currentUser) return;
+    if (currentUser.role !== 'admin') {
+        window.location.href = '/index.html';
+        return;
+    }
+    mountNavbar(currentUser, 'logs');
+
+    // Загружаем пользователей для фильтра
+    try {
+        const users = await api.getUsers();
+        const sel = document.getElementById('filterUser');
+        users.forEach(u => {
+            sel.insertAdjacentHTML('beforeend',
+                `<option value="${u.id}">${u.full_name ? u.full_name + ' (' + u.username + ')' : u.username}</option>`);
+        });
+    } catch {}
+
+    loadLogs();
+}
+
+async function loadLogs() {
+    const params = buildParams();
+    const tbody  = document.getElementById('logsTableBody');
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5">
+        <div class="spinner-border text-primary"></div></td></tr>`;
+
+    try {
+        allLogs = await api.getLogs(params);
+        renderTable(allLogs);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">
+            <i class="bi bi-exclamation-triangle me-2"></i>${err.message}</td></tr>`;
+    }
+}
+
+function buildParams() {
+    const params = {};
+    const action   = document.getElementById('filterAction').value;
+    const userId   = document.getElementById('filterUser').value;
+    const pageSize = document.getElementById('filterPageSize').value;
+    if (action)   params.action    = action;
+    if (userId)   params.user_id   = userId;
+    if (pageSize) params.page_size = pageSize;
+    return params;
+}
+
+function applyFilters() { loadLogs(); }
+
+function resetFilters() {
+    document.getElementById('filterAction').value   = '';
+    document.getElementById('filterUser').value     = '';
+    document.getElementById('filterPageSize').value = '100';
+    loadLogs();
+}
+
+function renderTable(logs) {
+    const tbody = document.getElementById('logsTableBody');
+    document.getElementById('logsInfo').textContent = `Записей: ${logs.length}`;
+
+    if (!logs.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-5">
+            <i class="bi bi-journal display-6 d-block mb-2"></i>Записей не найдено</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = logs.map(log => {
+        const actionLabel = ACTION_LABELS[log.action] || log.action;
+        const actionColor = getActionColor(log.action);
+        const hasExtra    = log.extra && Object.keys(log.extra).length > 0;
+
+        return `
+        <tr>
+            <td class="ps-3 small text-muted text-nowrap">${formatDateTime(log.created_at)}</td>
+            <td class="fw-mono small">${escHtml(log.username || '—')}</td>
+            <td><span class="badge ${actionColor}">${actionLabel}</span></td>
+            <td>
+                ${log.site_id_str
+                    ? `<a href="/site.html?id=${log.site_id}" class="fw-mono small text-decoration-none">${escHtml(log.site_id_str)}</a>`
+                    : '<span class="text-muted">—</span>'}
+            </td>
+            <td class="small text-truncate" style="max-width:300px;" title="${escHtml(log.detail || '')}">${escHtml(log.detail || '—')}</td>
+            <td class="small text-muted text-nowrap">${escHtml(log.ip_address || '—')}</td>
+            <td>
+                ${hasExtra ? `
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        onclick='showDetail(${log.id})' title="Подробнее">
+                    <i class="bi bi-chevron-right"></i>
+                </button>` : ''}
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function showDetail(logId) {
+    const log = allLogs.find(l => l.id === logId);
+    if (!log) return;
+
+    const body = document.getElementById('logDetailBody');
+    body.innerHTML = `
+        <dl class="row mb-3">
+            <dt class="col-4 text-muted">Дата/Время</dt>
+            <dd class="col-8">${formatDateTime(log.created_at)}</dd>
+            <dt class="col-4 text-muted">Пользователь</dt>
+            <dd class="col-8 fw-mono">${escHtml(log.username || '—')}</dd>
+            <dt class="col-4 text-muted">Действие</dt>
+            <dd class="col-8"><span class="badge ${getActionColor(log.action)}">${ACTION_LABELS[log.action] || log.action}</span></dd>
+            <dt class="col-4 text-muted">Объект</dt>
+            <dd class="col-8 fw-mono">${log.site_id_str ? escHtml(log.site_id_str) : '—'}</dd>
+            <dt class="col-4 text-muted">IP-адрес</dt>
+            <dd class="col-8">${escHtml(log.ip_address || '—')}</dd>
+            <dt class="col-4 text-muted">Детали</dt>
+            <dd class="col-8">${escHtml(log.detail || '—')}</dd>
+        </dl>
+        ${log.extra ? `
+        <div class="detail-section-title">Дополнительные данные</div>
+        <div class="log-extra">${escHtml(JSON.stringify(log.extra, null, 2))}</div>` : ''}`;
+
+    new bootstrap.Modal(document.getElementById('logDetailModal')).show();
+}
+
+function getActionColor(action) {
+    const map = {
+        login:         'bg-secondary',
+        user_create:   'bg-primary',
+        user_update:   'bg-info text-dark',
+        user_delete:   'bg-danger',
+        site_create:   'bg-success',
+        site_update:   'bg-primary',
+        site_delete:   'bg-danger',
+        excel_export:  'bg-warning text-dark',
+        excel_import:  'bg-warning text-dark',
+        rollback:      'bg-danger',
+    };
+    return map[action] || 'bg-secondary';
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RTKS Tracker — Подрядчики</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1100;margin-top:60px;"></div>
+
+<div class="page-content">
+
+    <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="bi bi-building me-2"></i>Справочник подрядчиков</h5>
+        <button class="btn btn-primary btn-sm" id="btnAdd" onclick="openCreateModal()">
+            <i class="bi bi-plus-lg me-1"></i>Добавить подрядчика
+        </button>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">Название</th>
+                            <th>Контактное лицо</th>
+                            <th>Телефон</th>
+                            <th>Email</th>
+                            <th>Статус</th>
+                            <th style="width:80px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="6" class="text-center py-5">
+                            <div class="spinner-border text-primary"></div>
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== Модал создания/редактирования ===== -->
+<div class="modal fade" id="itemModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Новый подрядчик</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="itemForm" novalidate>
+                    <input type="hidden" id="editItemId">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Название <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="f_name" required placeholder="Полное название компании">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Контактное лицо</label>
+                            <input type="text" class="form-control" id="f_contact_person" placeholder="Фамилия Имя Отчество">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Телефон</label>
+                            <input type="text" class="form-control" id="f_phone" placeholder="+7 (999) 000-00-00">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Email</label>
+                            <input type="email" class="form-control" id="f_email" placeholder="info@company.ru">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Примечания</label>
+                            <textarea class="form-control" id="f_notes" rows="2" placeholder="Дополнительная информация..."></textarea>
+                        </div>
+                        <div class="col-12" id="activeField" style="display:none;">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="f_is_active">
+                                <label class="form-check-label" for="f_is_active">Активен</label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="submitForm()">
+                    <i class="bi bi-check-lg me-1"></i><span id="modalSaveTxt">Создать</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Подтверждение удаления -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0">
+                <h5 class="modal-title text-danger">
+                    <i class="bi bi-building me-2"></i>Удалить подрядчика?
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                Подрядчик <strong id="deleteTargetName"></strong> будет удалён.
+                Объекты, назначенные этому подрядчику, останутся, но поле «Подрядчик» у них будет сброшено.
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" onclick="confirmDelete()">
+                    <i class="bi bi-trash me-1"></i>Удалить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+let currentUser = null;
+let isEditMode  = false;
+let deleteItemId = null;
+let isAdmin = false;
+
+async function init() {
+    currentUser = await checkAuth();
+    if (!currentUser) return;
+
+    isAdmin = currentUser.role === 'admin';
+    if (!['admin', 'manager'].includes(currentUser.role)) {
+        window.location.href = '/index.html';
+        return;
+    }
+
+    mountNavbar(currentUser, 'contractors');
+
+    // Только admin может создавать/удалять
+    if (!isAdmin) {
+        document.getElementById('btnAdd').classList.add('d-none');
+    }
+
+    loadItems();
+}
+
+async function loadItems() {
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center py-5">
+        <div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`;
+    try {
+        const items = await api.getContractors(true);
+        renderTable(items);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">
+            <i class="bi bi-exclamation-triangle me-2"></i>${err.message}</td></tr>`;
+    }
+}
+
+function renderTable(items) {
+    const tbody = document.getElementById('tableBody');
+    if (!items.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-5">
+            <i class="bi bi-building display-6 d-block mb-2"></i>Подрядчики не найдены</td></tr>`;
+        return;
+    }
+    tbody.innerHTML = items.map(c => `
+        <tr>
+            <td class="ps-3 fw-semibold">${escHtml(c.name)}</td>
+            <td>${escHtml(c.contact_person || '—')}</td>
+            <td class="small">${escHtml(c.phone || '—')}</td>
+            <td class="small">${escHtml(c.email || '—')}</td>
+            <td>
+                ${c.is_active
+                    ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Активен</span>'
+                    : '<span class="badge bg-secondary-subtle text-secondary border">Неактивен</span>'}
+            </td>
+            <td>
+                ${isAdmin ? `
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1 me-1" onclick="openEditModal(${c.id})" title="Редактировать">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="openDeleteModal(${c.id}, '${escHtml(c.name).replace(/'/g,"\\'")}')">
+                    <i class="bi bi-trash"></i>
+                </button>` : ''}
+            </td>
+        </tr>`).join('');
+}
+
+function openCreateModal() {
+    isEditMode = false;
+    document.getElementById('itemForm').reset();
+    document.getElementById('editItemId').value = '';
+    document.getElementById('modalTitle').textContent = 'Новый подрядчик';
+    document.getElementById('modalSaveTxt').textContent = 'Создать';
+    document.getElementById('activeField').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('itemModal')).show();
+}
+
+async function openEditModal(id) {
+    isEditMode = true;
+    try {
+        const items = await api.getContractors(true);
+        const c = items.find(x => x.id === id);
+        if (!c) { showToast('Подрядчик не найден', 'danger'); return; }
+
+        document.getElementById('itemForm').reset();
+        document.getElementById('editItemId').value     = c.id;
+        document.getElementById('modalTitle').textContent = `Редактировать: ${c.name}`;
+        document.getElementById('modalSaveTxt').textContent = 'Сохранить';
+        document.getElementById('f_name').value           = c.name;
+        document.getElementById('f_contact_person').value = c.contact_person || '';
+        document.getElementById('f_phone').value          = c.phone || '';
+        document.getElementById('f_email').value          = c.email || '';
+        document.getElementById('f_notes').value          = c.notes || '';
+        document.getElementById('f_is_active').checked    = c.is_active;
+        document.getElementById('activeField').style.display = '';
+
+        new bootstrap.Modal(document.getElementById('itemModal')).show();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+async function submitForm() {
+    const form = document.getElementById('itemForm');
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    const data = {
+        name:           document.getElementById('f_name').value.trim(),
+        contact_person: document.getElementById('f_contact_person').value.trim() || null,
+        phone:          document.getElementById('f_phone').value.trim() || null,
+        email:          document.getElementById('f_email').value.trim() || null,
+        notes:          document.getElementById('f_notes').value.trim() || null,
+    };
+
+    try {
+        if (!isEditMode) {
+            await api.createContractor(data);
+            showToast('Подрядчик добавлен');
+        } else {
+            const id = document.getElementById('editItemId').value;
+            data.is_active = document.getElementById('f_is_active').checked;
+            await api.updateContractor(id, data);
+            showToast('Подрядчик обновлён');
+        }
+        bootstrap.Modal.getInstance(document.getElementById('itemModal')).hide();
+        loadItems();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+function openDeleteModal(id, name) {
+    deleteItemId = id;
+    document.getElementById('deleteTargetName').textContent = name;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+async function confirmDelete() {
+    try {
+        await api.deleteContractor(deleteItemId);
+        bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+        showToast('Подрядчик удалён');
+        loadItems();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

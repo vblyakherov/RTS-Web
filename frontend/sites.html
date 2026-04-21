@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RTKS Tracker — Объекты</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1100;margin-top:60px;"></div>
+
+<div class="page-content">
+
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-3 flex-wrap">
+        <div>
+            <a href="/index.html" class="btn btn-sm btn-outline-secondary mb-2">
+                <i class="bi bi-arrow-left me-1"></i>К выбору проектов
+            </a>
+            <div class="small text-uppercase text-muted fw-semibold" id="projectCode">—</div>
+            <h1 class="h4 fw-bold mb-1" id="projectTitle">Загрузка проекта...</h1>
+            <div class="text-muted small" id="projectSubtitle">Рабочее пространство проекта</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+            <span class="badge text-bg-light border" id="projectModuleBadge">—</span>
+            <span class="badge text-bg-light border" id="projectStatsBadge">—</span>
+        </div>
+    </div>
+
+    <div class="card mb-3 filter-bar shadow-sm">
+        <div class="card-body py-2 px-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-3">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control" id="searchInput" placeholder="Поиск по ID, НП, локации...">
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <select class="form-select form-select-sm" id="filterStatus">
+                        <option value="">Все статусы</option>
+                        <option value="planned">Запланирован</option>
+                        <option value="survey">Обследование</option>
+                        <option value="design">Проектирование</option>
+                        <option value="permitting">Разрешения</option>
+                        <option value="construction">Строительство</option>
+                        <option value="testing">Тестирование</option>
+                        <option value="accepted">Принят</option>
+                        <option value="cancelled">Отменён</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <select class="form-select form-select-sm" id="filterRegion">
+                        <option value="">Все регионы</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2" id="contractorFilterCol">
+                    <select class="form-select form-select-sm" id="filterContractor">
+                        <option value="">Все подрядчики</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 d-flex gap-1 justify-content-end">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()" title="Сбросить фильтры">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" id="btnExport" onclick="doExport()">
+                        <i class="bi bi-download me-1"></i>Экспорт
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" id="btnImport" onclick="document.getElementById('importFileInput').click()">
+                        <i class="bi bi-upload me-1"></i>Импорт
+                    </button>
+                    <input type="file" id="importFileInput" accept=".xlsx" class="d-none">
+                    <button class="btn btn-sm btn-primary" id="btnCreate" onclick="openCreateModal()">
+                        <i class="bi bi-plus-lg me-1"></i>Добавить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-sm table-sites mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">ID объекта</th>
+                            <th>НП</th>
+                            <th>Регион</th>
+                            <th>Статус</th>
+                            <th>Подрядчик</th>
+                            <th>Обновлён</th>
+                            <th style="width:40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="sitesTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center py-5">
+                                <div class="spinner-border text-primary"></div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer d-flex align-items-center justify-content-between py-2">
+            <div class="text-muted small" id="paginationInfo">—</div>
+            <nav aria-label="Пагинация">
+                <ul class="pagination pagination-sm mb-0" id="pagination"></ul>
+            </nav>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="createSiteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Новый объект</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createSiteForm" novalidate>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">ID объекта <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="site_id" required placeholder="Например: RTS-001">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Наименование НП <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name" required placeholder="Например: с Малиновка">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Регион <span class="text-danger">*</span></label>
+                            <select class="form-select" name="region_id" id="createRegionSel" required>
+                                <option value="">— выберите регион —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold">Локация</label>
+                            <input type="text" class="form-control" name="address" placeholder="Район, сельское поселение, НП">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Статус</label>
+                            <select class="form-select" name="status">
+                                <option value="planned">Запланирован</option>
+                                <option value="survey">Обследование</option>
+                                <option value="design">Проектирование</option>
+                                <option value="permitting">Разрешения</option>
+                                <option value="construction">Строительство</option>
+                                <option value="testing">Тестирование</option>
+                                <option value="accepted">Принят</option>
+                                <option value="cancelled">Отменён</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Подрядчик</label>
+                            <select class="form-select" name="contractor_id" id="createContractorSel">
+                                <option value="">— не назначен —</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Плановый старт</label>
+                            <input type="date" class="form-control" name="planned_start">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">Плановый конец</label>
+                            <input type="date" class="form-control" name="planned_end">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Заметки</label>
+                            <textarea class="form-control" name="notes" rows="2" placeholder="Дополнительная информация..."></textarea>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="submitCreate()">
+                    <i class="bi bi-check-lg me-1"></i>Создать
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+let currentUser = null;
+let currentProject = null;
+let contractors = [];
+let currentPage = 1;
+const PAGE_SIZE = 50;
+let searchTimer = null;
+
+async function init() {
+    currentUser = await checkAuth();
+    if (!currentUser) return;
+
+    const projectId = new URLSearchParams(window.location.search).get('project_id') || api.getCurrentProject()?.id;
+    if (!projectId) {
+        window.location.href = '/index.html';
+        return;
+    }
+
+    try {
+        currentProject = await api.getProject(projectId);
+    } catch (err) {
+        showToast(err.message, 'danger');
+        window.location.href = '/index.html';
+        return;
+    }
+
+    if (currentProject.module_key !== 'ucn_sites_v1') {
+        rememberProject(currentProject);
+        window.location.href = getProjectRoute(currentProject);
+        return;
+    }
+
+    rememberProject(currentProject);
+    mountNavbar(currentUser, 'sites');
+    renderProjectHeader();
+
+    const canWrite = ['admin', 'manager'].includes(currentUser.role);
+    const canImport = canWrite;
+
+    if (!canWrite) document.getElementById('btnCreate')?.classList.add('d-none');
+    if (!canImport) document.getElementById('btnImport')?.classList.add('d-none');
+
+    try {
+        const regions = await api.getRegions(true);
+        const filterRegSel = document.getElementById('filterRegion');
+        const createRegSel = document.getElementById('createRegionSel');
+        regions.forEach(r => {
+            filterRegSel.insertAdjacentHTML('beforeend', `<option value="${r.id}">${escHtml(r.name)}</option>`);
+            createRegSel.insertAdjacentHTML('beforeend', `<option value="${r.id}">${escHtml(r.name)}</option>`);
+        });
+    } catch {}
+
+    if (!canWrite) {
+        document.getElementById('contractorFilterCol')?.classList.add('d-none');
+    } else {
+        try {
+            contractors = await api.getContractors(true);
+            const filterSel = document.getElementById('filterContractor');
+            const createSel = document.getElementById('createContractorSel');
+            contractors.forEach(c => {
+                filterSel.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escHtml(c.name)}</option>`);
+                createSel.insertAdjacentHTML('beforeend', `<option value="${c.id}">${escHtml(c.name)}</option>`);
+            });
+        } catch {}
+    }
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { currentPage = 1; loadSites(); }, 400);
+    });
+    ['filterStatus', 'filterContractor', 'filterRegion'].forEach(id => {
+        document.getElementById(id).addEventListener('change', () => { currentPage = 1; loadSites(); });
+    });
+
+    document.getElementById('importFileInput').addEventListener('change', function() {
+        doImport(this);
+    });
+
+    loadSites();
+}
+
+function renderProjectHeader() {
+    document.getElementById('projectCode').textContent = currentProject.code;
+    document.getElementById('projectTitle').textContent = currentProject.name;
+    document.getElementById('projectSubtitle').textContent =
+        currentProject.description || 'Рабочее пространство проекта';
+    document.getElementById('projectModuleBadge').textContent = moduleLabel(currentProject.module_key);
+    document.getElementById('projectStatsBadge').textContent = `${currentProject.site_count || 0} объектов`;
+    document.title = `${currentProject.name} — RTKS Tracker`;
+}
+
+async function loadSites() {
+    const params = { project_id: currentProject.id, page: currentPage, page_size: PAGE_SIZE };
+    const search = document.getElementById('searchInput').value.trim();
+    const status = document.getElementById('filterStatus').value;
+    const regionId = document.getElementById('filterRegion').value;
+    const contractor = document.getElementById('filterContractor').value;
+
+    if (search) params.search = search;
+    if (status) params.status = status;
+    if (regionId) params.region_id = regionId;
+    if (contractor) params.contractor_id = contractor;
+
+    const tbody = document.getElementById('sitesTableBody');
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5">
+        <div class="spinner-border spinner-border-sm text-primary"></div>
+    </td></tr>`;
+
+    try {
+        const data = await api.getSites(params);
+        renderTable(data);
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">
+            <i class="bi bi-exclamation-triangle me-2"></i>${escHtml(err.message)}
+        </td></tr>`;
+    }
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('sitesTableBody');
+
+    if (!data.items || !data.items.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-5">
+            <i class="bi bi-inbox display-6 d-block mb-2"></i>Объекты не найдены
+        </td></tr>`;
+        document.getElementById('paginationInfo').textContent = 'Нет объектов';
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
+
+    tbody.innerHTML = data.items.map(s => {
+        const contractor = s.contractor?.name || '—';
+        const siteUrl = `/site.html?id=${s.id}&project_id=${currentProject.id}`;
+        return `
+        <tr onclick="window.location.href='${siteUrl}'" style="cursor:pointer;">
+            <td class="ps-3 fw-mono text-primary">${escHtml(s.site_id)}</td>
+            <td>${escHtml(s.name)}</td>
+            <td><span class="badge bg-light text-dark border">${escHtml(s.region_rel ? s.region_rel.name : (s.region || '—'))}</span></td>
+            <td>${statusBadge(s.status)}</td>
+            <td>${escHtml(contractor)}</td>
+            <td class="text-muted small">${formatDateTime(s.updated_at)}</td>
+            <td onclick="event.stopPropagation()">
+                <a href="${siteUrl}" class="btn btn-sm btn-outline-secondary py-0 px-1">
+                    <i class="bi bi-pencil"></i>
+                </a>
+            </td>
+        </tr>`;
+    }).join('');
+
+    const total = data.total;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    document.getElementById('paginationInfo').textContent =
+        `Показано ${data.items.length} из ${total} объектов`;
+
+    renderPagination(currentPage, totalPages);
+}
+
+function renderPagination(page, totalPages) {
+    const pag = document.getElementById('pagination');
+    if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+    const range = [];
+    const delta = 2;
+    for (let i = Math.max(1, page - delta); i <= Math.min(totalPages, page + delta); i++) {
+        range.push(i);
+    }
+
+    let html = `<li class="page-item ${page === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="goPage(${page - 1});return false;">‹</a></li>`;
+    if (range[0] > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goPage(1);return false;">1</a></li>`;
+        if (range[0] > 2) html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+    }
+    range.forEach(i => {
+        html += `<li class="page-item ${i === page ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="goPage(${i});return false;">${i}</a></li>`;
+    });
+    if (range[range.length - 1] < totalPages) {
+        if (range[range.length - 1] < totalPages - 1) {
+            html += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+        }
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="goPage(${totalPages});return false;">${totalPages}</a></li>`;
+    }
+    html += `<li class="page-item ${page === totalPages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="goPage(${page + 1});return false;">›</a></li>`;
+
+    pag.innerHTML = html;
+}
+
+function goPage(page) {
+    currentPage = page;
+    loadSites();
+}
+
+function resetFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterRegion').value = '';
+    document.getElementById('filterContractor').value = '';
+    currentPage = 1;
+    loadSites();
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function openCreateModal() {
+    document.getElementById('createSiteForm').reset();
+    new bootstrap.Modal(document.getElementById('createSiteModal')).show();
+}
+
+async function submitCreate() {
+    const form = document.getElementById('createSiteForm');
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    const fd = new FormData(form);
+    const data = { project_id: currentProject.id };
+    fd.forEach((value, key) => { if (value !== '') data[key] = value; });
+
+    if (data.planned_start) data.planned_start = new Date(data.planned_start).toISOString();
+    if (data.planned_end) data.planned_end = new Date(data.planned_end).toISOString();
+    if (data.contractor_id) data.contractor_id = parseInt(data.contractor_id, 10);
+    if (data.region_id) data.region_id = parseInt(data.region_id, 10);
+
+    try {
+        await api.createSite(data);
+        bootstrap.Modal.getInstance(document.getElementById('createSiteModal')).hide();
+        showToast('Объект создан');
+        loadSites();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+async function doExport() {
+    const btn = document.getElementById('btnExport');
+    btn.disabled = true;
+    try {
+        const blob = await api.exportExcel(currentProject.id);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentProject.code}_${new Date().toISOString().split('T')[0]}.xlsm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Файл скачан');
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function doImport(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const btn = document.getElementById('btnImport');
+    btn.disabled = true;
+    try {
+        const result = await api.importExcel(file, currentProject.id);
+        showToast(`Импорт завершён: создано ${result.created}, обновлено ${result.updated}${result.errors_count ? ', ошибок: ' + result.errors_count : ''}`);
+        loadSites();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        input.value = '';
+    }
+}
+
+init();
+</script>
+</body>
+</html>

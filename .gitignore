@@ -1,0 +1,44 @@
+# Environment
+.env
+*.env
+.agents/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Alembic (версии коммитим, кэш — нет)
+alembic/__pycache__/
+
+# Claude Code
+.claude/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Docker volumes (локальные данные)
+postgres_data/
+upload_data/
+nginx_logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# E2E artifacts
+Tests/e2e/.auth/
+Tests/e2e/node_modules/
+Tests/e2e/playwright-report/
+Tests/e2e/test-results/

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RTKS Tracker — Отчеты</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="navbar-container"></div>
+
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index:1100;margin-top:60px;"></div>
+
+<div class="page-content reports-page">
+    <div class="d-flex align-items-start justify-content-between gap-3 mb-4 flex-wrap">
+        <div>
+            <a href="/index.html" class="btn btn-sm btn-outline-secondary mb-2" id="backToProjectLink">
+                <i class="bi bi-arrow-left me-1"></i>К проекту
+            </a>
+            <div class="small text-uppercase text-muted fw-semibold" id="projectCode">—</div>
+            <h1 class="h4 fw-bold mb-1" id="reportsPageTitle">Загрузка отчетов...</h1>
+            <div class="text-muted small" id="reportsPageSubtitle">Сводные показатели, презентации и выгрузка агрегированных данных</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap align-items-center">
+            <span class="badge text-bg-light border" id="projectModuleBadge">—</span>
+            <span class="badge text-bg-light border" id="reportsCountBadge">—</span>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-3 col-lg-4">
+            <div class="card shadow-sm reports-sidebar">
+                <div class="card-body">
+                    <div class="small text-uppercase text-muted fw-semibold mb-3">Доступные отчеты</div>
+                    <div id="reportsCatalog" class="d-grid gap-2">
+                        <div class="text-center py-4 text-muted">
+                            <div class="spinner-border spinner-border-sm text-primary mb-2"></div>
+                            <div>Загружаем каталог...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-9 col-lg-8">
+            <div id="reportsLoadingState" class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <div class="spinner-border text-primary mb-3"></div>
+                    <div class="fw-semibold">Подготавливаем отчеты проекта...</div>
+                </div>
+            </div>
+
+            <div id="reportsEmptyState" class="card shadow-sm d-none">
+                <div class="card-body p-4 p-lg-5 text-center">
+                    <div class="reports-empty-icon mx-auto mb-3">
+                        <i class="bi bi-journal-richtext"></i>
+                    </div>
+                    <h2 class="h5 fw-bold mb-2">Отчеты для этого проекта пока не настроены</h2>
+                    <p class="text-muted mb-4">
+                        Раздел уже подключен на уровне всей системы. Для этого большого проекта сюда можно будет
+                        добавить отдельные визуальные сводки, PDF/PPT-отчеты и Excel-выгрузки, когда появится
+                        внутренний доменный модуль.
+                    </p>
+                    <a class="btn btn-outline-primary" href="/index.html">
+                        <i class="bi bi-grid-1x2 me-1"></i>Вернуться к выбору проектов
+                    </a>
+                </div>
+            </div>
+
+            <div id="reportWorkspace" class="d-none">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                            <div>
+                                <div class="small text-uppercase text-muted fw-semibold mb-1">Активный отчет</div>
+                                <h2 class="h4 fw-bold mb-2" id="activeReportTitle">—</h2>
+                                <div class="text-muted" id="activeReportDescription">—</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-outline-danger btn-sm" id="downloadPdfBtn" type="button" onclick="downloadPdf()">
+                                    <i class="bi bi-filetype-pdf me-1"></i>PDF
+                                </button>
+                                <button class="btn btn-outline-warning btn-sm" id="downloadPptBtn" type="button" onclick="downloadPpt()">
+                                    <i class="bi bi-easel2 me-1"></i>PPT
+                                </button>
+                                <button class="btn btn-outline-success btn-sm" id="downloadExcelBtn" type="button" onclick="downloadExcel()">
+                                    <i class="bi bi-file-earmark-excel me-1"></i>Excel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="reportBoard"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/utils.js"></script>
+<script>
+let currentUser = null;
+let currentProject = null;
+let reportDefinitions = [];
+let currentReport = null;
+let activeReportKey = null;
+
+const exportScriptCache = new Map();
+
+async function init() {
+    currentUser = await checkAuth();
+    if (!currentUser) return;
+
+    const projectId = new URLSearchParams(window.location.search).get('project_id') || api.getCurrentProject()?.id;
+    if (!projectId) {
+        window.location.href = '/index.html';
+        return;
+    }
+
+    try {
+        currentProject = await api.getProject(projectId);
+    } catch (err) {
+        showToast(err.message, 'danger');
+        window.location.href = '/index.html';
+        return;
+    }
+
+    rememberProject(currentProject);
+    mountNavbar(currentUser, 'reports');
+    renderProjectHeader();
+    await loadReportsCatalog();
+}
+
+function renderProjectHeader() {
+    document.title = `${currentProject.name} — Отчеты — RTKS Tracker`;
+    document.getElementById('projectCode').textContent = currentProject.code || '—';
+    document.getElementById('reportsPageTitle').textContent = `Отчеты: ${currentProject.name}`;
+    document.getElementById('projectModuleBadge').textContent = moduleLabel(currentProject.module_key);
+    document.getElementById('backToProjectLink').href = getProjectRoute(currentProject);
+}
+
+async function loadReportsCatalog() {
+    try {
+        reportDefinitions = await api.getReports(currentProject.id);
+    } catch (err) {
+        showToast(err.message, 'danger');
+        document.getElementById('reportsLoadingState').classList.add('d-none');
+        document.getElementById('reportsEmptyState').classList.remove('d-none');
+        return;
+    }
+
+    renderReportsCatalog();
+    document.getElementById('reportsCountBadge').textContent = `Отчетов: ${reportDefinitions.length}`;
+
+    if (!reportDefinitions.length) {
+        document.getElementById('reportsLoadingState').classList.add('d-none');
+        document.getElementById('reportsEmptyState').classList.remove('d-none');
+        return;
+    }
+
+    document.getElementById('reportsLoadingState').classList.add('d-none');
+    document.getElementById('reportWorkspace').classList.remove('d-none');
+    await selectReport(reportDefinitions[0].key);
+}
+
+function renderReportsCatalog() {
+    const container = document.getElementById('reportsCatalog');
+    if (!reportDefinitions.length) {
+        container.innerHTML = `
+            <div class="small text-muted">
+                Для проекта пока нет настроенных отчетов.
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = reportDefinitions.map(report => `
+        <button
+            type="button"
+            class="btn report-catalog-item text-start ${report.key === activeReportKey ? 'active' : ''}"
+            data-report-key="${report.key}"
+            onclick="selectReport('${report.key}')"
+        >
+            <div class="fw-semibold mb-1">${escHtml(report.title)}</div>
+            <div class="small text-muted">${escHtml(report.description || '')}</div>
+        </button>
+    `).join('');
+}
+
+async function selectReport(reportKey) {
+    activeReportKey = reportKey;
+    renderReportsCatalog();
+    toggleExportButtons(false);
+    document.getElementById('reportBoard').innerHTML = `
+        <div class="card shadow-sm">
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-primary mb-3"></div>
+                <div class="fw-semibold">Готовим отчет...</div>
+            </div>
+        </div>`;
+
+    try {
+        currentReport = await api.getReport(currentProject.id, reportKey);
+    } catch (err) {
+        showToast(err.message, 'danger');
+        return;
+    }
+
+    document.getElementById('activeReportTitle').textContent = currentReport.title || 'Отчет';
+    document.getElementById('activeReportDescription').textContent = currentReport.description || '';
+    renderActiveReport();
+    toggleExportButtons(true);
+}
+
+function toggleExportButtons(enabled) {
+    ['downloadPdfBtn', 'downloadPptBtn', 'downloadExcelBtn'].forEach(id => {
+        const button = document.getElementById(id);
+        if (button) button.disabled = !enabled;
+    });
+}
+
+function renderActiveReport() {
+    const report = currentReport;
+    const generatedAt = formatDateTime(report.generated_at);
+    document.getElementById('reportBoard').innerHTML = `
+        <div id="reportBoardCapture" class="report-board-capture">
+            <section class="report-export-slide card shadow-sm mb-3" data-export-slide="overview">
+                <div class="card-body p-4">
+                    <div class="report-surface">
+                        <div class="report-surface-hero mb-4">
+                            <div>
+                                <div class="report-surface-kicker">${escHtml(currentProject.name)}</div>
+                                <h3 class="h4 fw-bold mb-2">${escHtml(report.title)}</h3>
+                                <p class="mb-0 text-muted">${escHtml(report.description || '')}</p>
+                            </div>
+                            <div class="report-generated-badge">
+                                <i class="bi bi-clock-history me-1"></i>${escHtml(generatedAt)}
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            ${(report.summary || []).map(renderSummaryCard).join('')}
+                        </div>
+
+                        ${(report.highlights || []).length ? `
+                        <div class="report-highlights mb-4">
+                            ${(report.highlights || []).map(item => `
+                                <div class="report-highlight-pill">
+                                    <i class="bi bi-stars text-primary"></i>
+                                    <span>${escHtml(item)}</span>
+                                </div>
+                            `).join('')}
+                        </div>` : ''}
+
+                        <div class="row g-3">
+                            ${(report.charts || []).map(chart => `
+                                <div class="col-12 ${report.charts.length > 1 ? 'col-xl-6' : ''}">
+                                    ${renderChartCard(chart)}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            ${(report.tables || []).map((table, index) => `
+                <section class="report-export-slide card shadow-sm mb-3" data-export-slide="table-${index}">
+                    <div class="card-body p-4">
+                        ${renderTableCard(table)}
+                    </div>
+                </section>
+            `).join('')}
+        </div>`;
+}
+
+function renderSummaryCard(item) {
+    return `
+        <div class="col-md-6 col-xl-3">
+            <div class="report-summary-card report-tone-${escHtml(item.tone || 'primary')}">
+                <div class="report-summary-label">${escHtml(item.label)}</div>
+                <div class="report-summary-value">${escHtml(item.value)}</div>
+                <div class="report-summary-hint">${escHtml(item.hint || '')}</div>
+            </div>
+        </div>`;
+}
+
+function renderChartCard(chart) {
+    const rows = chart.rows || [];
+    const scaleBase = Math.max(...rows.map(row => Number(row.share ?? row.value ?? 0)), 0, 1);
+    return `
+        <div class="report-card-block h-100">
+            <div class="small text-uppercase text-muted fw-semibold mb-1">${escHtml(chart.title)}</div>
+            <div class="text-muted small mb-3">${escHtml(chart.description || '')}</div>
+            ${rows.length ? rows.map(row => {
+                const width = Math.max(0, Math.min(100, ((Number(row.share ?? row.value ?? 0) / scaleBase) * 100)));
+                return `
+                    <div class="report-bar-item">
+                        <div class="d-flex align-items-start justify-content-between gap-3 mb-1">
+                            <div>
+                                <div class="fw-semibold">${escHtml(row.label)}</div>
+                                <div class="text-muted small">${escHtml(row.hint || '')}</div>
+                            </div>
+                            <div class="report-bar-value">${escHtml(row.display_value || String(row.value ?? '0'))}</div>
+                        </div>
+                        <div class="report-bar-track">
+                            <div class="report-bar-fill report-tone-${escHtml(row.tone || 'primary')}" style="width:${width}%;"></div>
+                        </div>
+                    </div>`;
+            }).join('') : '<div class="text-muted">Для этого блока пока нет данных.</div>'}
+        </div>`;
+}
+
+function renderTableCard(table) {
+    const columns = table.columns || [];
+    const rows = table.rows || [];
+    return `
+        <div class="report-card-block">
+            <div class="small text-uppercase text-muted fw-semibold mb-1">${escHtml(table.title)}</div>
+            <div class="text-muted small mb-3">${escHtml(table.description || '')}</div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 report-table">
+                    <thead>
+                        <tr>
+                            ${columns.map(column => `
+                                <th class="${column.align === 'end' ? 'text-end' : ''}">${escHtml(column.label)}</th>
+                            `).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.length ? rows.map(row => `
+                            <tr>
+                                ${columns.map(column => `
+                                    <td class="${column.align === 'end' ? 'text-end' : ''}">
+                                        ${escHtml(row[column.key] == null ? '—' : String(row[column.key]))}
+                                    </td>
+                                `).join('')}
+                            </tr>
+                        `).join('') : `
+                            <tr>
+                                <td colspan="${Math.max(columns.length, 1)}" class="text-center text-muted py-4">
+                                    Нет агрегированных данных для отображения
+                                </td>
+                            </tr>
+                        `}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
+function getExportBaseName() {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    return `${currentProject.code}_${currentReport.key}_${stamp}`;
+}
+
+function getExportSlides() {
+    return Array.from(document.querySelectorAll('#reportBoardCapture [data-export-slide]'));
+}
+
+function loadExternalScript(src, globalCheck) {
+    if (globalCheck()) return Promise.resolve();
+    if (exportScriptCache.has(src)) return exportScriptCache.get(src);
+
+    const promise = new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = () => globalCheck() ? resolve() : reject(new Error(`Library failed to initialize: ${src}`));
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+        document.head.appendChild(script);
+    });
+
+    exportScriptCache.set(src, promise);
+    return promise;
+}
+
+async function ensurePdfLibraries() {
+    await loadExternalScript(
+        'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+        () => typeof window.html2canvas === 'function'
+    );
+    await loadExternalScript(
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+        () => !!window.jspdf?.jsPDF
+    );
+}
+
+async function ensurePptLibraries() {
+    await loadExternalScript(
+        'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js',
+        () => typeof window.html2canvas === 'function'
+    );
+    await loadExternalScript(
+        'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+        () => typeof window.PptxGenJS === 'function'
+    );
+}
+
+async function ensureExcelLibraries() {
+    await loadExternalScript(
+        'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+        () => !!window.XLSX?.utils
+    );
+}
+
+async function captureElementImage(element) {
+    const canvas = await window.html2canvas(element, {
+        backgroundColor: '#f6f1ea',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+    });
+    return {
+        canvas,
+        dataUrl: canvas.toDataURL('image/png'),
+    };
+}
+
+async function downloadPdf() {
+    if (!currentReport) return;
+    try {
+        toggleExportButtons(false);
+        await ensurePdfLibraries();
+        const captureRoot = document.getElementById('reportBoardCapture');
+        const { canvas, dataUrl } = await captureElementImage(captureRoot);
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        let heightLeft = imgHeight;
+        let position = 0;
+        pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(dataUrl, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+            heightLeft -= pageHeight;
+        }
+
+        pdf.save(`${getExportBaseName()}.pdf`);
+    } catch (err) {
+        showToast(err.message || 'Не удалось собрать PDF-отчет', 'danger');
+    } finally {
+        toggleExportButtons(true);
+    }
+}
+
+async function downloadPpt() {
+    if (!currentReport) return;
+    try {
+        toggleExportButtons(false);
+        await ensurePptLibraries();
+        const deck = new window.PptxGenJS();
+        deck.layout = 'LAYOUT_WIDE';
+        deck.author = 'RTKS Tracker';
+        deck.subject = currentReport.title;
+        deck.title = `${currentProject.name} — ${currentReport.title}`;
+        deck.company = 'RTKS Tracker';
+
+        const slides = getExportSlides();
+        for (const slideElement of slides) {
+            const slide = deck.addSlide();
+            slide.background = { color: 'F6F1EA' };
+            const { dataUrl } = await captureElementImage(slideElement);
+            slide.addImage({ data: dataUrl, x: 0.4, y: 0.3, w: 12.5, h: 6.7 });
+        }
+
+        await deck.writeFile({ fileName: `${getExportBaseName()}.pptx` });
+    } catch (err) {
+        showToast(err.message || 'Не удалось собрать PPT-отчет', 'danger');
+    } finally {
+        toggleExportButtons(true);
+    }
+}
+
+function makeSheetRows(sheet) {
+    const columns = sheet.columns || [];
+    const rows = sheet.rows || [];
+    return rows.map(row => {
+        const entry = {};
+        columns.forEach(column => {
+            entry[column.label] = row[column.key] == null ? '' : row[column.key];
+        });
+        return entry;
+    });
+}
+
+async function downloadExcel() {
+    if (!currentReport) return;
+    try {
+        toggleExportButtons(false);
+        await ensureExcelLibraries();
+        const workbook = window.XLSX.utils.book_new();
+
+        (currentReport.export_sheets || []).forEach(sheet => {
+            const worksheet = window.XLSX.utils.json_to_sheet(makeSheetRows(sheet));
+            const safeName = (sheet.name || 'Sheet').slice(0, 31);
+            window.XLSX.utils.book_append_sheet(workbook, worksheet, safeName);
+        });
+
+        window.XLSX.writeFile(workbook, `${getExportBaseName()}.xlsx`);
+    } catch (err) {
+        showToast(err.message || 'Не удалось собрать Excel-выгрузку', 'danger');
+    } finally {
+        toggleExportButtons(true);
+    }
+}
+
+init();
+</script>
+</body>
+</html>
