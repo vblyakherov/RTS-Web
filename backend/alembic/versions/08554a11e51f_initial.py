@@ -7,6 +7,7 @@ Create Date: 2026-04-04
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = "08554a11e51f"
@@ -15,8 +16,15 @@ branch_labels = None
 depends_on = None
 
 
-user_role = sa.Enum("admin", "manager", "contractor", "viewer", name="user_role")
-site_status = sa.Enum(
+user_role = postgresql.ENUM(
+    "admin",
+    "manager",
+    "contractor",
+    "viewer",
+    name="user_role",
+    create_type=False,
+)
+site_status = postgresql.ENUM(
     "planned",
     "survey",
     "design",
@@ -26,6 +34,7 @@ site_status = sa.Enum(
     "accepted",
     "cancelled",
     name="site_status",
+    create_type=False,
 )
 
 
