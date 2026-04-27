@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.config import settings
 from app.database import get_db
 from app.schemas.auth import LoginRequest, Token
 from app.schemas.user import UserMe, UserSelfUpdate, UserUpdate
-from app.crud.user import get_user_by_username, update_user
+from app.crud.user import get_user_by_username, update_user, upsert_ldap_user
 from app.crud.log import write_log
 from app.services.auth import verify_password, create_access_token
+from app.services.ldap_auth import authenticate_ldap_user
 from app.api.deps import get_current_user, get_client_ip
 from app.models.user import User
 from app.limiter import limiter
@@ -22,6 +24,31 @@ def _sanitize_self_update_extra(extra: dict) -> dict | None:
     return safe_extra or None
 
 
+async def _authenticate_local_user(
+    db: AsyncSession,
+    username: str,
+    password: str,
+) -> User | None:
+    user = await get_user_by_username(db, username)
+    if not user or not verify_password(password, user.hashed_password):
+        return None
+    return user
+
+
+async def _authenticate_login_user(
+    db: AsyncSession,
+    username: str,
+    password: str,
+) -> User | None:
+    auth_backend = settings.AUTH_BACKEND.strip().lower()
+    if auth_backend == "ldap":
+        ldap_user = await authenticate_ldap_user(username, password)
+        if not ldap_user:
+            return None
+        return await upsert_ldap_user(db, ldap_user)
+    return await _authenticate_local_user(db, username, password)
+
+
 @router.post("/login", response_model=Token)
 @limiter.limit("5/minute")
 async def login(
@@ -29,8 +56,8 @@ async def login(
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user = await get_user_by_username(db, data.username)
-    if not user or not verify_password(data.password, user.hashed_password):
+    user = await _authenticate_login_user(db, data.username, data.password)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

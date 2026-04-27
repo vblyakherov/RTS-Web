@@ -14,6 +14,31 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from conftest import token_headers
 from app.models.log import ActionLog
+from app.models.user import User, UserRole
+from app.services.ldap_auth import LdapAuthenticatedUser
+
+
+def test_ldap_group_mapping_accepts_ad_member_dns():
+    """AD memberOf DN с CN=tracker_users маппится в manager."""
+    from app.services.ldap_auth import _role_from_groups
+
+    role = _role_from_groups([
+        "CN=tracker_users,OU=Groups,DC=example,DC=local",
+    ])
+
+    assert role == UserRole.manager
+
+
+def test_ldap_group_mapping_admin_has_priority():
+    """tracker_admins приоритетнее tracker_users."""
+    from app.services.ldap_auth import _role_from_groups
+
+    role = _role_from_groups([
+        "CN=tracker_users,OU=Groups,DC=example,DC=local",
+        "CN=tracker_admins,OU=Groups,DC=example,DC=local",
+    ])
+
+    assert role == UserRole.admin
 
 
 async def test_login_success(client, seeded):
@@ -63,6 +88,161 @@ async def test_login_unknown_user(client, seeded):
         "username": "nobody_here",
         "password": "anything",
     })
+    assert resp.status_code == 401
+
+
+async def test_ldap_login_creates_manager_for_tracker_users(
+    client,
+    seeded,
+    db_engine,
+    monkeypatch,
+):
+    """LDAP user из tracker_users создаётся локально как manager."""
+    from app.api.v1 import auth as auth_api
+    from app.config import settings
+
+    old_backend = settings.AUTH_BACKEND
+    settings.AUTH_BACKEND = "ldap"
+
+    async def fake_ldap_authenticate(username, password):
+        assert username == "ad_user"
+        assert password == "AdPass123"
+        return LdapAuthenticatedUser(
+            username="ad_user",
+            full_name="AD User",
+            email="ad_user@example.local",
+            role=UserRole.manager,
+            groups=["tracker_users"],
+        )
+
+    monkeypatch.setattr(auth_api, "authenticate_ldap_user", fake_ldap_authenticate)
+    try:
+        resp = await client.post("/api/v1/auth/login", json={
+            "username": "ad_user",
+            "password": "AdPass123",
+        })
+    finally:
+        settings.AUTH_BACKEND = old_backend
+
+    assert resp.status_code == 200, resp.text
+
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        user = (
+            await session.execute(select(User).where(User.username == "ad_user"))
+        ).scalar_one()
+
+    assert user.email == "ad_user@example.local"
+    assert user.full_name == "AD User"
+    assert user.role == UserRole.manager
+    assert user.is_active is True
+
+
+async def test_ldap_login_admin_group_has_priority(
+    client,
+    seeded,
+    db_engine,
+    monkeypatch,
+):
+    """Если LDAP вернул обе группы, tracker_admins побеждает tracker_users."""
+    from app.api.v1 import auth as auth_api
+    from app.config import settings
+
+    old_backend = settings.AUTH_BACKEND
+    settings.AUTH_BACKEND = "ldap"
+
+    async def fake_ldap_authenticate(username, password):
+        return LdapAuthenticatedUser(
+            username=username,
+            full_name="AD Admin",
+            email="ad_admin@example.local",
+            role=UserRole.admin,
+            groups=["tracker_users", "tracker_admins"],
+        )
+
+    monkeypatch.setattr(auth_api, "authenticate_ldap_user", fake_ldap_authenticate)
+    try:
+        resp = await client.post("/api/v1/auth/login", json={
+            "username": "ad_admin",
+            "password": "AdPass123",
+        })
+    finally:
+        settings.AUTH_BACKEND = old_backend
+
+    assert resp.status_code == 200, resp.text
+
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        user = (
+            await session.execute(select(User).where(User.username == "ad_admin"))
+        ).scalar_one()
+
+    assert user.role == UserRole.admin
+
+
+async def test_ldap_login_updates_existing_user_role(
+    client,
+    seeded,
+    db_engine,
+    monkeypatch,
+):
+    """Повторный LDAP login синхронизирует роль существующего локального user."""
+    from app.api.v1 import auth as auth_api
+    from app.config import settings
+
+    old_backend = settings.AUTH_BACKEND
+    settings.AUTH_BACKEND = "ldap"
+
+    async def fake_ldap_authenticate(username, password):
+        return LdapAuthenticatedUser(
+            username="t_manager",
+            full_name="Promoted Manager",
+            email="manager@test.local",
+            role=UserRole.admin,
+            groups=["tracker_admins"],
+        )
+
+    monkeypatch.setattr(auth_api, "authenticate_ldap_user", fake_ldap_authenticate)
+    try:
+        resp = await client.post("/api/v1/auth/login", json={
+            "username": "t_manager",
+            "password": "AdPass123",
+        })
+    finally:
+        settings.AUTH_BACKEND = old_backend
+
+    assert resp.status_code == 200, resp.text
+
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        user = (
+            await session.execute(select(User).where(User.username == "t_manager"))
+        ).scalar_one()
+
+    assert user.role == UserRole.admin
+    assert user.full_name == "Promoted Manager"
+
+
+async def test_ldap_login_failure_returns_401(client, seeded, monkeypatch):
+    """Неуспешная LDAP-аутентификация → 401."""
+    from app.api.v1 import auth as auth_api
+    from app.config import settings
+
+    old_backend = settings.AUTH_BACKEND
+    settings.AUTH_BACKEND = "ldap"
+
+    async def fake_ldap_authenticate(username, password):
+        return None
+
+    monkeypatch.setattr(auth_api, "authenticate_ldap_user", fake_ldap_authenticate)
+    try:
+        resp = await client.post("/api/v1/auth/login", json={
+            "username": "ad_user",
+            "password": "WrongPass999",
+        })
+    finally:
+        settings.AUTH_BACKEND = old_backend
+
     assert resp.status_code == 401
 
 
