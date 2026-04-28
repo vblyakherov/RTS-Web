@@ -10,6 +10,7 @@ test_auth.py — тесты аутентификации.
   - GET /auth/me с просроченным/невалидным токеном → 401
 """
 import pytest
+import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from conftest import token_headers
@@ -39,6 +40,46 @@ def test_ldap_group_mapping_admin_has_priority():
     ])
 
     assert role == UserRole.admin
+
+
+def test_ldap_result_summary_keeps_diagnostics():
+    """LDAP result summary keeps useful server diagnostics."""
+    from app.services.ldap_auth import _ldap_result_summary
+
+    class FakeConnection:
+        result = {
+            "result": 49,
+            "description": "invalidCredentials",
+            "message": "80090308: data 52e",
+        }
+
+    summary = _ldap_result_summary(FakeConnection())
+
+    assert "result=49" in summary
+    assert "description=invalidCredentials" in summary
+    assert "message=80090308: data 52e" in summary
+
+
+def test_ldap_log_event_does_not_log_password(caplog):
+    """LDAP diagnostics must not leak passwords."""
+    from app.services.ldap_auth import _log_ldap_event
+
+    caplog.set_level(logging.INFO, logger="app.services.ldap_auth")
+
+    _log_ldap_event(
+        logging.INFO,
+        "test event",
+        username="ad_user",
+        bind_password="SuperSecret123",
+        password="SuperSecret123",
+        server_url="ldaps://rtk-service.ru:636",
+    )
+
+    assert "test event" in caplog.text
+    assert "ad_user" in caplog.text
+    assert "ldaps://rtk-service.ru:636" in caplog.text
+    assert "SuperSecret123" not in caplog.text
+    assert "bind_password" not in caplog.text
 
 
 async def test_login_success(client, seeded):
