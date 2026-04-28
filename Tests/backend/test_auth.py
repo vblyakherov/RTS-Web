@@ -82,6 +82,38 @@ def test_ldap_log_event_does_not_log_password(caplog):
     assert "bind_password" not in caplog.text
 
 
+def test_ldap_server_urls_support_single_and_comma_list(monkeypatch):
+    """LDAP server URLs can be configured as one URL or a comma-separated list."""
+    from app.config import settings
+    from app.services.ldap_auth import _ldap_server_urls
+
+    old_url = settings.LDAP_SERVER_URL
+    old_urls = settings.LDAP_SERVER_URLS
+    try:
+        settings.LDAP_SERVER_URL = "ldaps://dc1.rtk-service.ru:636"
+        settings.LDAP_SERVER_URLS = None
+        assert _ldap_server_urls() == ["ldaps://dc1.rtk-service.ru:636"]
+
+        settings.LDAP_SERVER_URLS = (
+            "ldaps://dc1.rtk-service.ru:636, ldap://dc2.rtk-service.ru:389"
+        )
+        assert _ldap_server_urls() == [
+            "ldaps://dc1.rtk-service.ru:636",
+            "ldap://dc2.rtk-service.ru:389",
+        ]
+    finally:
+        settings.LDAP_SERVER_URL = old_url
+        settings.LDAP_SERVER_URLS = old_urls
+
+
+def test_ldap_server_options_disable_referrals_and_schema_lookup_by_default():
+    """Defaults should avoid extra network hops in locked-down intranets."""
+    from app.services.ldap_auth import _ldap_auto_referrals, _ldap_get_info
+
+    assert _ldap_auto_referrals() is False
+    assert _ldap_get_info() == "NONE"
+
+
 async def test_login_success(client, seeded):
     """Успешный логин возвращает JWT-токен и тип 'bearer'."""
     resp = await client.post("/api/v1/auth/login", json={

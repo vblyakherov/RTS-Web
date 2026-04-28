@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     # LDAP / Active Directory
     LDAP_SERVER_URL: str | None = None
+    LDAP_SERVER_URLS: str | None = None
     LDAP_BIND_DN: str | None = None
     LDAP_BIND_PASSWORD: str | None = None
     LDAP_USER_BASE_DN: str | None = None
@@ -35,6 +36,9 @@ class Settings(BaseSettings):
     LDAP_ADMINS_GROUP: str = "tracker_admins"
     LDAP_DEFAULT_EMAIL_DOMAIN: str = "ldap.local"
     LDAP_CONNECT_TIMEOUT: int = 5
+    LDAP_AUTO_REFERRALS: bool = False
+    LDAP_GET_INFO: str = "none"
+    LDAP_FORCE_IPV4: bool = False
 
     @property
     def origins_list(self) -> List[str]:

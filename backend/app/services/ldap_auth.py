@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 import logging
+import socket
+from urllib.parse import urlparse
 
 from starlette.concurrency import run_in_threadpool
 
@@ -58,6 +60,48 @@ def _setting_value(value: str | None) -> str | None:
     return value or None
 
 
+def _ldap_server_urls() -> list[str]:
+    raw_urls = _setting_value(settings.LDAP_SERVER_URLS) or _setting_value(settings.LDAP_SERVER_URL)
+    if not raw_urls:
+        return []
+    return [url.strip() for url in raw_urls.split(",") if url.strip()]
+
+
+def _ldap_auto_referrals() -> bool:
+    return bool(settings.LDAP_AUTO_REFERRALS)
+
+
+def _ldap_get_info() -> str:
+    mode = settings.LDAP_GET_INFO.strip().lower()
+    return "ALL" if mode == "all" else "NONE"
+
+
+def _parse_ldap_server_url(server_url: str) -> tuple[str, int, bool]:
+    normalized_url = server_url if "://" in server_url else f"ldap://{server_url}"
+    parsed = urlparse(normalized_url)
+    if parsed.scheme not in {"ldap", "ldaps"}:
+        raise ValueError(f"Unsupported LDAP URL scheme: {parsed.scheme}")
+    if not parsed.hostname:
+        raise ValueError("LDAP server URL must include a host")
+    port = parsed.port or (636 if parsed.scheme == "ldaps" else 389)
+    return parsed.hostname, port, parsed.scheme == "ldaps"
+
+
+def _connect_host(host: str, port: int) -> tuple[str, list[str]]:
+    if not settings.LDAP_FORCE_IPV4:
+        return host, []
+    addresses = socket.getaddrinfo(
+        host,
+        port,
+        family=socket.AF_INET,
+        type=socket.SOCK_STREAM,
+    )
+    resolved = sorted({item[4][0] for item in addresses})
+    if not resolved:
+        raise OSError(f"No IPv4 address found for LDAP host {host}")
+    return resolved[0], resolved
+
+
 def _group_names(groups: list[str]) -> set[str]:
     names: set[str] = set()
     for group in groups:
@@ -106,71 +150,63 @@ def _user_bind_name(username: str, user_dn: str | None) -> str:
     return user_dn or username
 
 
-def _required_ldap_config() -> tuple[str, str]:
-    server_url = _setting_value(settings.LDAP_SERVER_URL)
+def _required_ldap_config() -> tuple[list[str], str]:
+    server_urls = _ldap_server_urls()
     user_base_dn = _setting_value(settings.LDAP_USER_BASE_DN)
-    if not server_url or not user_base_dn:
+    if not server_urls or not user_base_dn:
         _log_ldap_event(
             logging.ERROR,
             "configuration error",
-            server_url_configured=bool(server_url),
+            server_url_configured=bool(server_urls),
             user_base_dn_configured=bool(user_base_dn),
         )
-        raise RuntimeError("LDAP_SERVER_URL and LDAP_USER_BASE_DN must be configured")
-    return server_url, user_base_dn
+        raise RuntimeError("LDAP_SERVER_URL(S) and LDAP_USER_BASE_DN must be configured")
+    return server_urls, user_base_dn
 
 
-def _authenticate_ldap_user_blocking(
+def _authenticate_ldap_user_on_server(
     username: str,
     password: str,
-) -> LdapAuthenticatedUser | None:
-    from ldap3 import ALL, Connection, Server
+    server_url: str,
+    user_base_dn: str,
+    search_filter: str,
+    attributes: list[str],
+    bind_dn: str | None,
+    bind_password: str | None,
+) -> tuple[LdapAuthenticatedUser | None, bool]:
+    from ldap3 import ALL, NONE, Connection, Server
     from ldap3.core.exceptions import LDAPException
-    from ldap3.utils.conv import escape_filter_chars
 
-    username = username.strip()
-    if not username or not password:
-        _log_ldap_event(
-            logging.WARNING,
-            "empty username or password",
-            username_present=bool(username),
-            password_present=bool(password),
-        )
-        return None
-
-    try:
-        server_url, user_base_dn = _required_ldap_config()
-    except RuntimeError:
-        return None
-
-    safe_username = escape_filter_chars(username)
-    search_filter = settings.LDAP_USER_FILTER.format(username=safe_username)
-    attributes = [
-        settings.LDAP_USERNAME_ATTRIBUTE,
-        settings.LDAP_FULL_NAME_ATTRIBUTE,
-        settings.LDAP_EMAIL_ATTRIBUTE,
-        settings.LDAP_GROUP_ATTRIBUTE,
-    ]
-
-    bind_dn = _setting_value(settings.LDAP_BIND_DN)
-    bind_password = _setting_value(settings.LDAP_BIND_PASSWORD)
     search_connection = None
     stage = "server_init"
-
-    _log_ldap_event(
-        logging.INFO,
-        "start",
-        username=username,
-        server_url=server_url,
-        search_base=user_base_dn,
-        search_filter=search_filter,
-        bind_mode="service" if bind_dn and bind_password else "direct",
-    )
-
     try:
+        host, port, use_ssl = _parse_ldap_server_url(server_url)
+        connect_host, resolved_ipv4 = _connect_host(host, port)
+        get_info_mode = _ldap_get_info()
+
+        _log_ldap_event(
+            logging.INFO,
+            "server attempt",
+            username=username,
+            server_url=server_url,
+            host=host,
+            port=port,
+            use_ssl=use_ssl,
+            connect_host=connect_host,
+            force_ipv4=settings.LDAP_FORCE_IPV4,
+            resolved_ipv4=resolved_ipv4,
+            get_info=get_info_mode,
+            auto_referrals=_ldap_auto_referrals(),
+            search_base=user_base_dn,
+            search_filter=search_filter,
+            bind_mode="service" if bind_dn and bind_password else "direct",
+        )
+
         server = Server(
-            server_url,
-            get_info=ALL,
+            connect_host,
+            port=port,
+            use_ssl=use_ssl,
+            get_info=ALL if get_info_mode == "ALL" else NONE,
             connect_timeout=settings.LDAP_CONNECT_TIMEOUT,
         )
         if bind_dn and bind_password:
@@ -187,6 +223,7 @@ def _authenticate_ldap_user_blocking(
                 user=bind_dn,
                 password=bind_password,
                 auto_bind=True,
+                auto_referrals=_ldap_auto_referrals(),
                 receive_timeout=settings.LDAP_CONNECT_TIMEOUT,
             )
             _log_ldap_event(
@@ -210,6 +247,7 @@ def _authenticate_ldap_user_blocking(
                 user=direct_bind_user,
                 password=password,
                 auto_bind=True,
+                auto_referrals=_ldap_auto_referrals(),
                 receive_timeout=settings.LDAP_CONNECT_TIMEOUT,
             )
             _log_ldap_event(
@@ -234,7 +272,7 @@ def _authenticate_ldap_user_blocking(
                 search_filter=search_filter,
                 ldap_result=_ldap_result_summary(search_connection),
             )
-            return None
+            return None, False
         if not search_connection.entries:
             _log_ldap_event(
                 logging.WARNING,
@@ -244,7 +282,7 @@ def _authenticate_ldap_user_blocking(
                 search_filter=search_filter,
                 ldap_result=_ldap_result_summary(search_connection),
             )
-            return None
+            return None, False
 
         entry = search_connection.entries[0]
         user_dn = entry.entry_dn
@@ -261,7 +299,7 @@ def _authenticate_ldap_user_blocking(
                 required_user_group=settings.LDAP_USERS_GROUP,
                 required_admin_group=settings.LDAP_ADMINS_GROUP,
             )
-            return None
+            return None, False
 
         if bind_dn and bind_password:
             stage = "user_bind"
@@ -278,6 +316,7 @@ def _authenticate_ldap_user_blocking(
                 user=user_bind_name,
                 password=password,
                 auto_bind=True,
+                auto_referrals=_ldap_auto_referrals(),
                 receive_timeout=settings.LDAP_CONNECT_TIMEOUT,
             )
             user_connection.unbind()
@@ -307,28 +346,99 @@ def _authenticate_ldap_user_blocking(
             email=_first_entry_value(entry, settings.LDAP_EMAIL_ATTRIBUTE),
             role=role,
             groups=groups,
-        )
+        ), False
     except LDAPException as exc:
+        retry_next = "Socket" in type(exc).__name__ or "timed out" in str(exc).lower()
         _log_ldap_event(
             logging.WARNING,
             "LDAP exception",
             username=username,
+            server_url=server_url,
             stage=stage,
             error_type=type(exc).__name__,
             error=str(exc),
             ldap_result=_ldap_result_summary(search_connection),
+            retry_next_server=retry_next,
         )
-        return None
-    except Exception:
+        return None, retry_next
+    except Exception as exc:
         logger.exception(
-            "LDAP auth: unexpected exception username=%s stage=%s",
+            "LDAP auth: unexpected exception username=%s server_url=%s stage=%s",
             username,
+            server_url,
             stage,
         )
-        return None
+        return None, isinstance(exc, (OSError, ValueError))
     finally:
         if search_connection is not None and search_connection.bound:
             search_connection.unbind()
+
+
+def _authenticate_ldap_user_blocking(
+    username: str,
+    password: str,
+) -> LdapAuthenticatedUser | None:
+    from ldap3.utils.conv import escape_filter_chars
+
+    username = username.strip()
+    if not username or not password:
+        _log_ldap_event(
+            logging.WARNING,
+            "empty username or password",
+            username_present=bool(username),
+            password_present=bool(password),
+        )
+        return None
+
+    try:
+        server_urls, user_base_dn = _required_ldap_config()
+    except RuntimeError:
+        return None
+
+    safe_username = escape_filter_chars(username)
+    search_filter = settings.LDAP_USER_FILTER.format(username=safe_username)
+    attributes = [
+        settings.LDAP_USERNAME_ATTRIBUTE,
+        settings.LDAP_FULL_NAME_ATTRIBUTE,
+        settings.LDAP_EMAIL_ATTRIBUTE,
+        settings.LDAP_GROUP_ATTRIBUTE,
+    ]
+    bind_dn = _setting_value(settings.LDAP_BIND_DN)
+    bind_password = _setting_value(settings.LDAP_BIND_PASSWORD)
+
+    _log_ldap_event(
+        logging.INFO,
+        "start",
+        username=username,
+        server_urls=server_urls,
+        search_base=user_base_dn,
+        search_filter=search_filter,
+        bind_mode="service" if bind_dn and bind_password else "direct",
+    )
+
+    for server_url in server_urls:
+        user, retry_next = _authenticate_ldap_user_on_server(
+            username=username,
+            password=password,
+            server_url=server_url,
+            user_base_dn=user_base_dn,
+            search_filter=search_filter,
+            attributes=attributes,
+            bind_dn=bind_dn,
+            bind_password=bind_password,
+        )
+        if user is not None:
+            return user
+        if not retry_next:
+            return None
+
+    _log_ldap_event(
+        logging.WARNING,
+        "all configured LDAP servers failed",
+        username=username,
+        server_urls=server_urls,
+    )
+    return None
 
 
 async def authenticate_ldap_user(
