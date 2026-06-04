@@ -24,10 +24,11 @@ Public Const DATA_SHEET_PASSWORD As String = "RTKS_SYNC_DATA"
 Public Const CFG_LAST_SYNC  As String = "last_sync_at"
 Public Const CFG_AUTH_TOKEN As String = "auth_token"
 Public Const CFG_USERNAME   As String = "username"
+Public Const CFG_PROJECT_ID As String = "project_id"
 
 ' --- Ключевое поле ---
 Public Const KEY_DB_NAME    As String = "site_id"
-Public Const KEY_HEADER     As String = "Site ID"
+Public Const KEY_HEADER     As String = "ID объекта"
 
 ' --- Таймауты (мс) ---
 Public Const HTTP_TIMEOUT   As Long = 120000
@@ -35,6 +36,7 @@ Public Const HTTP_TIMEOUT   As Long = 120000
 ' --- Хранение токена (в памяти) ---
 Public g_Token              As String
 Public g_Username           As String
+Public g_ProjectId          As String
 Public g_LastSyncAt         As String   ' ISO-8601 или ""
 
 ' --- Маппинг колонок (заполняется при первой синхронизации) ---
@@ -82,10 +84,21 @@ Public Function LoadUsername() As String
     g_Username = LoadUsername
 End Function
 
+Public Sub SaveProjectId(projectId As String)
+    SaveConfigValue CFG_PROJECT_ID, projectId
+    g_ProjectId = projectId
+End Sub
+
+Public Function LoadProjectId() As String
+    LoadProjectId = LoadConfigValue(CFG_PROJECT_ID)
+    g_ProjectId = LoadProjectId
+End Function
+
 Public Sub LoadStoredSession()
     LoadLastSync
     LoadAuthToken
     LoadUsername
+    LoadProjectId
 End Sub
 
 Public Sub ClearStoredAuth()

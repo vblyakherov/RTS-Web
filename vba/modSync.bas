@@ -27,8 +27,8 @@ Private m_KeyCol  As Long       ' Номер колонки с site_id
 Public Sub SyncNow()
     On Error GoTo ErrHandler
 
-    Application.StatusBar = "Sync: checking access..."
-    If Not DoLogin() Then
+    Application.StatusBar = "Sync: loading session..."
+    If Not EnsureSyncSession() Then
         Application.StatusBar = False
         Exit Sub
     End If
@@ -65,6 +65,9 @@ Public Sub SyncNow()
     Else
         reqBody = JsonObjAddRaw(reqBody, "last_sync_at", "null")
     End If
+    If Len(Trim$(g_ProjectId)) > 0 And IsNumeric(g_ProjectId) Then
+        reqBody = JsonObjAdd(reqBody, "project_id", CLng(g_ProjectId))
+    End If
     reqBody = JsonObjAddRaw(reqBody, "rows", dirtyJson)
     reqBody = JsonObjAdd(reqBody, "client_version", CLng(1))
     reqBody = JsonObjEnd(reqBody)
@@ -77,7 +80,7 @@ Public Sub SyncNow()
     If Not resp.Success Then
         If resp.StatusCode = 401 Then
             ' Токен протух — повторяем логин
-            g_Token = ""
+            ClearStoredAuth
             If DoLogin() Then
                 resp = HttpPost(FullUrl(EP_SYNC), reqBody)
             End If
@@ -158,6 +161,17 @@ End Sub
 '  ЗАГРУЗКА МАППИНГА КОЛОНОК С СЕРВЕРА
 ' ============================================================
 
+Private Function EnsureSyncSession() As Boolean
+    LoadStoredSession
+
+    If Len(g_Token) > 0 Then
+        EnsureSyncSession = True
+        Exit Function
+    End If
+
+    EnsureSyncSession = DoLogin()
+End Function
+
 Private Function LoadColumnMap() As Boolean
     If g_ColMapLoaded Then
         LoadColumnMap = True
@@ -166,6 +180,13 @@ Private Function LoadColumnMap() As Boolean
 
     Dim resp As HttpResponse
     resp = HttpGet(FullUrl(EP_COLUMNS))
+
+    If Not resp.Success And resp.StatusCode = 401 Then
+        ClearStoredAuth
+        If DoLogin() Then
+            resp = HttpGet(FullUrl(EP_COLUMNS))
+        End If
+    End If
 
     If Not resp.Success Then
         MsgBox "Could not load column list:" & vbCrLf & resp.Body, vbCritical, "Sync error"

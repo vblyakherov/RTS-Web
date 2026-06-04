@@ -13,6 +13,8 @@ test_excel.py — тесты Excel-экспорта с привязкой к м�
   - POST /excel/import — не создаёт новые объекты, только обновляет существующие
 """
 import io
+import re
+from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import ZipFile
 import pytest
@@ -21,6 +23,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from conftest import token_headers
 from app.models.site import Site
 from app.services.auth import decode_token
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 # ── Экспорт: проверка module_key ───────────────────────────────────────────────
@@ -122,6 +127,42 @@ async def test_export_embeds_scoped_excel_token(monkeypatch, client, seeded):
     assert token_data.role == "admin"
     assert token_data.token_type == "excel_sync"
     assert token_data.project_id == seeded["ucn_project_id"]
+
+
+def test_vba_sync_uses_embedded_excel_token_without_browser_auth_probe():
+    """VBA sync должен сначала использовать _Config.auth_token, а не /auth/me."""
+    config_src = _vba_source("modConfig.bas")
+    sync_src = _vba_source("modSync.bas")
+
+    assert 'Public Const API_BASE       As String = "/api/v1"' in config_src
+    assert 'Public Const CFG_PROJECT_ID As String = "project_id"' in config_src
+    assert 'Public Const KEY_HEADER     As String = "ID объекта"' in config_src
+    assert "Public g_ProjectId" in config_src
+
+    sync_now = _vba_block(sync_src, "Public Sub SyncNow()", "Private Function LoadColumnMap")
+    assert "EnsureSyncSession" in sync_now
+    assert "If Not DoLogin()" not in sync_now
+
+    ensure_session = _vba_function(sync_src, "EnsureSyncSession")
+    assert "LoadStoredSession" in ensure_session
+    assert "DoLogin" in ensure_session
+    assert "CheckToken" not in ensure_session
+
+    assert 'JsonObjAdd(reqBody, "project_id", CLng(g_ProjectId))' in sync_src
+
+
+def test_nginx_keeps_legacy_vba_sync_routes_compatible():
+    """Старые XLSM-макросы без /api/v1 не должны получать nginx 404."""
+    nginx_conf = (REPO_ROOT / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+
+    assert "location = /auth/me" in nginx_conf
+    assert "proxy_pass http://backend:8000/api/v1/sync/columns;" in nginx_conf
+    assert "location /auth/" in nginx_conf
+    assert "proxy_pass http://backend:8000/api/v1/auth/" in nginx_conf
+    assert "location = /sync" in nginx_conf
+    assert "proxy_pass http://backend:8000/api/v1/sync;" in nginx_conf
+    assert "location /sync/" in nginx_conf
+    assert "proxy_pass http://backend:8000/api/v1/sync/" in nginx_conf
 
 
 # ── Импорт: проверка module_key и типа файла ──────────────────────────────────
@@ -314,6 +355,25 @@ async def test_replace_placeholder_project_returns_400(client, seeded):
 
 
 # ── Вспомогательная функция ───────────────────────────────────────────────────
+
+def _vba_source(filename: str) -> str:
+    return (REPO_ROOT / "vba" / filename).read_text(encoding="utf-8")
+
+
+def _vba_block(source: str, start: str, end: str) -> str:
+    start_idx = source.index(start)
+    end_idx = source.index(end, start_idx)
+    return source[start_idx:end_idx]
+
+
+def _vba_function(source: str, function_name: str) -> str:
+    match = re.search(
+        rf"(?:Public|Private) Function {re.escape(function_name)}\b.*?End Function",
+        source,
+        flags=re.DOTALL,
+    )
+    assert match is not None, f"VBA function {function_name} not found"
+    return match.group(0)
 
 def _minimal_xlsx_bytes(site_id: str = "BS-IMPORT-001") -> bytes:
     """Создаёт минимальный валидный .xlsx файл для тестов."""
