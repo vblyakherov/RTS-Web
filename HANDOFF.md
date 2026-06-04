@@ -1,11 +1,17 @@
 # RTKS Tracker Handoff
 
-Дата: 2026-04-21
+Дата: 2026-06-04
 
 ## Коротко
 - Веб-брендинг системы: `RTKS Tracker`.
 - После логина пользователь попадает на экран выбора большого проекта плитками.
 - Рабочий модуль сейчас один: `УЦН 2.0 2026 год` (`module_key = ucn_sites_v1`).
+- 2026-06-04 UCN переведён на актуальный Excel-шаблон трекера v2:
+  - активный контракт: `67` колонок из `backend/app/core/columns.py`;
+  - `ID объекта` остаётся ключом и находится третьей колонкой;
+  - добавлен admin-only replace-load через web UI на `/projects.html`;
+  - на проде миграция `007_ucn_template_v2_headers` применена, заполненный шаблон успешно загружен админом;
+  - `main` и `origin/main` содержат коммиты `49c08a0` и `a77d181`.
 - 2026-04-13 UCN полностью переведён на новый серверный Excel-шаблон.
 - Старые UCN-данные на проде удалены, вместо них загружено `172` строк нового шаблона.
 - Для тестовой загрузки в колонку `ID объекта` были сгенерированы значения
@@ -25,6 +31,31 @@
   - обычные browser-endpoints принимают только `access` token;
   - `/sync` и `/sync/columns` принимают `excel_sync`, но только в рамках зашитого проекта;
   - `/sync` дополнительно отвергает строки с `site_id`, относящимся к другому проекту.
+
+## Последние фиксы 2026-06-04: Excel-шаблон v2 и admin replace-load
+- Загруженный пользователем файл `Шаблон трекера v2_только_заголовки.xlsx` стал источником активного UCN Excel-контракта.
+- В `backend/app/core/columns.py` теперь 67 активных колонок; `ID объекта` — третья колонка и единственный sync/import key.
+- Добавлены новые поля БД:
+  - `ams_storage_city`;
+  - `ams_verticality_report_plan`;
+  - `ams_verticality_report_fact`;
+  - `smr_order`;
+  - `psez_preparation`;
+  - `kzd_smr`.
+- `Р1` и `Р2` сохранены как активные колонки через существующие поля.
+- Старые активные колонки `ППО`, `ИД`, `Подписание заказа на СМР` убраны из Excel-контракта. Старые DB-поля не удалялись, чтобы не делать лишний destructive schema cleanup.
+- Добавлен endpoint `POST /api/v1/excel/replace?project_id=...`:
+  - доступен только `admin`;
+  - работает только для проекта с `module_key = ucn_sites_v1`;
+  - сначала полностью валидирует файл;
+  - только после чистой валидации удаляет старые `sites` и `site_history` выбранного UCN-проекта;
+  - создаёт новый набор объектов из строк Excel.
+- Обычный `POST /api/v1/excel/import` и XLSM sync по-прежнему update-only: неизвестный `ID объекта` возвращается ошибкой и не создаёт объект.
+- `backend/load_ucn_template_data.py --clear` переведён на тот же replace-сервис, поэтому серверная команда и web UI имеют одинаковую семантику.
+- На `/projects.html` у admin появилась кнопка загрузки заполненного шаблона для UCN-проекта с отдельным предупреждением об удалении старых площадок.
+- На сервере первая попытка Alembic упала из-за слишком длинного revision id для `alembic_version.version_num varchar(32)`. Исправлено коротким revision id `007_ucn_template_v2_headers`.
+- После фикса код залит в `main`, на VPS выполнены `git pull`, миграция, рестарт, затем admin успешно загрузил заполненный шаблон через web UI.
+- Если `curl http://127.0.0.1/api/health` возвращает `301`, это HTTPS-редирект Nginx. Проверять через `curl -L`, внешний HTTPS URL или прямой backend route.
 
 ## Последние фиксы 2026-04-18: раздел Отчеты
 - В `frontend/js/utils.js` navbar получил проектный пункт `Отчеты` для всех ролей внутри выбранного проекта.
@@ -157,8 +188,10 @@
 
 ### Что обновлено в backend
 - добавлена миграция `006_add_ucn_template_v2_fields`;
+- добавлена миграция `007_update_ucn_template_v2_headers.py` с revision id `007_ucn_template_v2_headers`;
 - в модель `Site` добавлены новые template-specific поля;
 - Excel import переписан под новый `.xlsx/.xlsm` шаблон;
+- добавлен admin-only destructive replace-load `POST /api/v1/excel/replace`;
 - export формирует новый набор колонок;
 - sync/history/rollback используют тот же реестр полей;
 - добавлен скрипт `backend/load_ucn_template_data.py` для массовой загрузки шаблона в проект `ucn-2026`.
@@ -243,6 +276,7 @@ DELETE /api/v1/sites/{id}
 ```text
 GET  /api/v1/excel/export?project_id=...
 POST /api/v1/excel/import?project_id=...
+POST /api/v1/excel/replace?project_id=...  # admin only, destructive replace-load
 ```
 
 Ключевые правила:
@@ -251,6 +285,7 @@ POST /api/v1/excel/import?project_id=...
 - для placeholder-проектов export/import должны давать `400`;
 - новый импорт требует колонку `ID объекта`;
 - import обновляет только существующие объекты и не создаёт новый объект по неизвестному `ID объекта`.
+- replace-load доступен только admin, валидирует файл до очистки и создаёт новый набор объектов после удаления старых данных проекта.
 
 ### Reports
 ```text
@@ -285,7 +320,7 @@ GET  /api/v1/sync/columns
 - sync не создаёт новый объект по неизвестному `ID объекта`; такая строка возвращается как ошибка.
 
 ## Что уже проверено на проде
-- Код задеплоен на VPS через `rsync`.
+- Апрельские обновления деплоились через `rsync`; обновление 2026-06-04 деплоилось через `git pull --ff-only origin main` на VPS.
 - Перед обновлением создан бэкап БД:
   - `/home/<deploy-user>/backups/rtks_prod_YYYYMMDD_HHMMSS.sql`
 - На проде применена миграция `006_add_ucn_template_v2_fields`.
@@ -322,6 +357,12 @@ GET  /api/v1/sync/columns
   - `/sync` и `/sync/columns` принимают scoped `excel_sync` token;
   - `/sync` отвергает project mismatch и строки с `site_id` из другого проекта;
   - полный серверный прогон после деплоя: backend `91 passed`.
+- Обновление 2026-06-04 тоже подтверждено на проде:
+  - GitHub pull с VPS доступен и использован для получения `origin/main`;
+  - применена миграция `007_ucn_template_v2_headers`;
+  - backend/nginx перезапущены;
+  - health через HTTPS/редирект работает;
+  - admin успешно загрузил заполненный новый шаблон через web UI, данные в БД заменились.
 
 ## Текущее состояние XLSM / VBA sync
 - Export отдаёт `.xlsm` с `vbaProject.bin`.
@@ -359,12 +400,12 @@ GET  /api/v1/sync/columns
   - `test_sites.py`
   - `test_sync.py`
 
-### Актуальный статус тестов на 2026-04-21
+### Актуальный статус тестов на 2026-06-04
 - Подтверждённый полный backend-прогон на VPS: `91/91`.
 - Разбивка backend-набора:
-  - `test_auth.py` — 13
+  - `test_auth.py` — 23
   - `test_contractors.py` — 2
-  - `test_excel.py` — 10
+  - `test_excel.py` — 13
   - `test_projects.py` — 16
   - `test_regions.py` — 2
   - `test_reports.py` — 6
@@ -373,9 +414,10 @@ GET  /api/v1/sync/columns
 - Подтверждённый frontend unit-прогон на VPS: `55/55`.
 - Подтверждённый E2E-прогон на VPS через Playwright Docker и текущую `playwright.config.js`: `69 passed`, `1 skipped`, `1 flaky`.
 - Текущий инвентарь в коде:
-  - backend: `91`;
-  - frontend unit: `55`;
+  - backend: `104`;
+  - frontend unit: `56`;
   - e2e spec files: `7`.
+- После изменений 2026-06-04 полный regression ещё не прогонялся. Подтверждены статические проверки и успешная ручная прод-загрузка заполненного шаблона.
 - Для Codex/локального агента подтверждающий backend-прогон считать серверным: локальная системная `python3` может быть ниже `3.12`.
 - Для незакоммиченных правок безопаснее копировать проект во временный каталог на VPS и запускать `pytest` там, а не подменять `~/network-tracker/backend`, потому что продовый backend там работает с bind-mount и `--reload`.
 - Последние фронтенд-фиксы 2026-04-14/15 подтверждены ручной проверкой на проде; автоматический прогон тестов под них повторно не запускался.
@@ -391,6 +433,9 @@ GET  /api/v1/sync/columns
   - тесты на `excel_sync` token в `test_auth.py`, `test_excel.py`, `test_sync.py`;
   - проверки project-scoping для `/sync` и `/sync/columns`;
   - regression-test на запрет sync строки с `site_id` из другого проекта.
+- На 2026-06-04 дополнительно добавлены:
+  - backend-тесты admin replace-load, запрета для manager и `400` для placeholder-проекта;
+  - frontend unit-тест для `replaceExcelData()`.
 - Канонический backend-runner на VPS сейчас:
   - `PYTHONPATH=~/network-tracker/backend /tmp/rts-web-codex-venv/bin/pytest -q`
 - `~/network-tracker/Tests/backend/.venv` на сервере всё ещё разъехался по Python/pydantic_core и не считается каноническим runner'ом.
@@ -442,8 +487,9 @@ GET  /api/v1/sync/columns
 - Учитывать, что UCN уже живёт на новом Excel-контракте.
 - Не возвращать старые NI-поля как основной источник истины для Excel/sync.
 - Если нужно заново грузить шаблон на прод:
+  - предпочтительно делать это admin-кнопкой на `/projects.html` для проекта UCN;
   - предварительно убедиться, что Excel-файл заполнен по `ID объекта`;
-  - затем использовать `backend/load_ucn_template_data.py`.
+  - серверная альтернатива: `backend/load_ucn_template_data.py --clear`.
 - Не удалять `Tests/` и локальные служебные каталоги пользователя без явной необходимости.
 
 ## Ключевые файлы для ориентирования
@@ -455,11 +501,13 @@ GET  /api/v1/sync/columns
 - `backend/app/services/reports.py`
 - `backend/app/schemas/report.py`
 - `backend/alembic/versions/006_add_ucn_template_v2_fields.py`
+- `backend/alembic/versions/007_update_ucn_template_v2_headers.py`
 - `backend/app/core/columns.py`
 - `backend/app/api/v1/auth.py`
 - `frontend/profile.html`
 - `backend/app/services/ucn_template.py`
 - `backend/app/services/excel.py`
+- `backend/app/api/v1/excel.py`
 - `backend/app/services/sync.py`
 - `backend/app/crud/site.py`
 - `backend/app/crud/site_history.py`
@@ -474,6 +522,7 @@ GET  /api/v1/sync/columns
 
 ## Что брать следующим приоритетом
 - Сменить admin password на проде.
+- Прогнать полный backend/frontend/e2e regression после 2026-06-04 изменений.
 - Прогнать ручной smoke по UI:
   - login
   - выбор проекта
@@ -483,7 +532,6 @@ GET  /api/v1/sync/columns
   - карточка объекта
   - export
   - базовый sync-сценарий
-- Решить, остаются ли тестовые `ID объекта` на этом наборе или их нужно заменить на боевые.
 - Починить `~/network-tracker/Tests/backend/.venv`, чтобы не зависеть от `/tmp/rts-web-codex-venv`.
 - Подключить `reports.spec.js` к текущей Playwright project matrix и отдельно подтвердить reports E2E серверным прогоном.
 - Добавить E2E-сценарий `login -> project selection -> module`.

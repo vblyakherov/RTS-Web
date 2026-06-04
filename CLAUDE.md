@@ -1,6 +1,6 @@
 # RTKS Tracker — краткий актуальный контекст
 
-Обновлено: 2026-04-21
+Обновлено: 2026-06-04
 
 `AGENTS.md` и `HANDOFF.md` остаются более подробными источниками истины. Этот файл нужен как быстрый вход в текущую архитектуру проекта без старого NI-контекста.
 
@@ -28,6 +28,13 @@
   - обычные browser-endpoints принимают только `access` token;
   - `/sync` и `/sync/columns` принимают `excel_sync`, но только в рамках зашитого проекта;
   - `/sync` отклоняет строки с `site_id`, относящимся к другому проекту.
+- С 2026-06-04 UCN работает на актуальном 67-колоночном Excel-шаблоне трекера v2:
+  - `ID объекта` остаётся ключом и находится третьей колонкой;
+  - добавлен admin-only endpoint `POST /api/v1/excel/replace?project_id=...`;
+  - admin может заменить весь набор площадок через `/projects.html`;
+  - обычный import и XLSM sync остаются update-only и не создают новые объекты;
+  - текущий Alembic head: `007_ucn_template_v2_headers`;
+  - прод подтверждён: `git pull` с VPS, миграция, рестарт и web-загрузка заполненного шаблона прошли успешно.
 
 ## Стек
 
@@ -37,23 +44,27 @@
 - Auth: JWT (`python-jose`) + `bcrypt==4.0.1`
 - Frontend: HTML/JS + Bootstrap 5, без frontend framework
 - Infra: Docker Compose, Nginx
-- Deploy: `rsync` с локальной машины на VPS, затем `docker compose restart ...`
+- Deploy: `git pull --ff-only origin main` на VPS, затем Alembic/restart; `rsync` оставлен как fallback.
 
 ## VPS и деплой
 
 - Хост: `ssh <vps-alias>`
 - Папка проекта: `/home/<deploy-user>/network-tracker/`
-- GitHub на VPS недоступен, поэтому `git pull` не используется
+- На 2026-06-04 GitHub на VPS доступен, поэтому штатный деплой можно делать через `git pull`
 - Нормальный workflow:
   1. правки локально;
   2. `git commit`;
   3. `git push origin main`;
-  4. `rsync` на VPS;
-  5. `docker compose restart backend` и/или `docker compose restart nginx`
+  4. на VPS `git pull --ff-only origin main`;
+  5. `docker exec tracker_backend alembic upgrade head`;
+  6. `docker compose restart backend` и/или `docker compose restart nginx`
 
 Полезные команды:
 
 ```bash
+# pull latest code on VPS
+ssh <vps-alias> "cd ~/network-tracker && git fetch origin && git pull --ff-only origin main"
+
 # backend
 rsync -az backend/ <vps-alias>:/home/<deploy-user>/network-tracker/backend/
 ssh <vps-alias> "cd ~/network-tracker && docker compose restart backend"
@@ -63,7 +74,7 @@ rsync -az frontend/ <vps-alias>:/home/<deploy-user>/network-tracker/frontend/
 ssh <vps-alias> "cd ~/network-tracker && docker compose restart nginx"
 
 # smoke
-ssh <vps-alias> "curl -s http://127.0.0.1/api/health"
+ssh <vps-alias> "curl -s -L http://127.0.0.1/api/health"
 ssh <vps-alias> "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/reports.html"
 ```
 
@@ -139,6 +150,7 @@ GET /api/v1/reports/{report_key}?project_id=...
 
 GET  /api/v1/excel/export?project_id=...
 POST /api/v1/excel/import?project_id=...
+POST /api/v1/excel/replace?project_id=...
 
 POST /api/v1/sync
 GET  /api/v1/sync/history/{site_id}
@@ -161,6 +173,7 @@ GET /api/health
 - `contractor` в reports API видит только агрегаты по своим объектам
 - Excel import/export работают только для `ucn_sites_v1`
 - Import/sync по неизвестному `ID объекта` не создают новый объект
+- Только admin replace-load создаёт новый набор площадок после полной валидации и очистки старых данных проекта
 - Ключ sync: `sites.site_id`, Excel-колонка `ID объекта`
 
 ## Отчеты
@@ -190,15 +203,16 @@ GET /api/health
 
 ## Тесты
 
-Актуально на 2026-04-21:
+Актуально на 2026-06-04:
 
-- полный backend-suite на VPS: `91/91`
-- frontend unit на VPS: `55/55`
+- последний полный backend-suite на VPS: `91/91` на 2026-04-21
+- последний frontend unit на VPS: `55/55` на 2026-04-20
 - e2e через Playwright Docker и текущую `playwright.config.js`: `69 passed`, `1 skipped`, `1 flaky`
 - текущий инвентарь в коде:
-  - backend: `91`
-  - frontend unit: `55`
+  - backend: `104`
+  - frontend unit: `56`
   - e2e spec files: `7`
+- после изменений 2026-06-04 полный regression ещё не прогонялся; prod-загрузка нового шаблона подтверждена вручную
 
 Известные ограничения текущего серверного тестового контура:
 
@@ -215,6 +229,8 @@ GET /api/health
 - `backend/app/services/reports.py`
 - `backend/app/schemas/report.py`
 - `backend/app/services/excel.py`
+- `backend/app/api/v1/excel.py`
+- `backend/app/crud/site.py`
 - `backend/app/services/sync.py`
 - `backend/app/core/columns.py`
 - `Tests/backend/test_reports.py`

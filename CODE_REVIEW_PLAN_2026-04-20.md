@@ -480,6 +480,14 @@ if not user or not verify_password(...):
 - `/sync` отклоняет project mismatch и строки с `site_id` из другого проекта;
 - подтверждённый server-side backend regression: `91/91` на VPS.
 
+Статус на 2026-06-04:
+
+- UCN Excel-контракт обновлён под новый 67-колоночный шаблон трекера v2;
+- добавлен admin-only `POST /api/v1/excel/replace?project_id=...` для destructive replace-load после полной валидации файла;
+- обычный `/excel/import` и `/sync` остаются update-only и не создают объекты по неизвестному `ID объекта`;
+- продовая загрузка заполненного шаблона через admin UI подтверждена;
+- security-пункты этого плана по limiter/XSS/cookie остаются актуальными и не были закрыты в рамках шаблонного обновления.
+
 ### Этап 3. Закрыть реальные XSS-синки
 
 Цель:

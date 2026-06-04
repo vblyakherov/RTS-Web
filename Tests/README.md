@@ -1,29 +1,30 @@
 # RTKS Tracker — Тесты
 
-## Актуальный статус на 2026-04-21
+## Актуальный статус на 2026-06-04
 
 ### Подтверждённые прогоны
 
 | Контур | Результат | Где подтверждено |
 |---|---:|---|
-| Backend (`pytest`) | **91/91** | VPS, 2026-04-21, `PYTHONPATH=~/network-tracker/backend /tmp/rts-web-codex-venv/bin/pytest -q` |
-| Frontend (`jest`) | **55/55** | VPS, 2026-04-20 |
+| Backend (`pytest`) | **91/91** | последний полный VPS-прогон, 2026-04-21, `PYTHONPATH=~/network-tracker/backend /tmp/rts-web-codex-venv/bin/pytest -q` |
+| Frontend (`jest`) | **55/55** | последний полный VPS-прогон, 2026-04-20 |
 | E2E (`playwright`) | **69 passed, 1 skipped, 1 flaky** | VPS, 2026-04-20, Playwright Docker runner |
 | **Важно** | `reports.spec.js` сейчас не входит в `testMatch` ни одного Playwright project | поэтому не участвует в подтверждённом e2e-прогоне |
+| **Важно** | изменения 2026-06-04 ещё не закрыты полным regression | подтверждены статические проверки и успешная ручная prod-загрузка нового Excel-шаблона |
 
 ### Текущий инвентарь backend-набора в репозитории
 
 | Файл | Тестов | Статус |
 |---|---:|---|
-| `test_auth.py` | 13 | `+1` scoped Excel token guard |
+| `test_auth.py` | 23 | auth, self-update, token guards |
 | `test_contractors.py` | 2 | `+2` новый directory-набор |
-| `test_excel.py` | 10 | `+1` export embeds `excel_sync` token |
+| `test_excel.py` | 13 | `+3` admin replace-load нового шаблона |
 | `test_projects.py` | 16 | ✅ |
 | `test_regions.py` | 2 | `+2` новый directory-набор |
 | `test_reports.py` | 6 | `+6` новый reports-набор |
 | `test_sites.py` | 19 | расширен под explicit commits и no-write-on-GET |
 | `test_sync.py` | 23 | `+5` Excel token scope и project-scoping |
-| **Итого backend** | **91** | Полный VPS-прогон под этот инвентарь подтверждён на VPS |
+| **Итого backend** | **104** | Полный VPS-прогон под этот инвентарь ещё не подтверждён после 2026-06-04 |
 
 - Новый backend-набор проверяет, что import/sync по неизвестному `ID объекта` не создают новый объект.
 - На 2026-04-21 backend-набор дополнительно проверяет:
@@ -31,13 +32,17 @@
   - запрет `excel_sync` token для обычных browser auth-endpoints;
   - допуск `excel_sync` token на `/sync` и `/sync/columns` только в рамках зашитого `project_id`;
   - запрет sync строки с `site_id`, относящимся к другому проекту.
+- На 2026-06-04 backend-набор дополнительно проверяет:
+  - admin может выполнить destructive replace-load UCN-проекта из заполненного шаблона;
+  - manager не может выполнить replace-load;
+  - placeholder-проект возвращает `400` для replace-load.
 - Дополнительно подтверждено, что `GET /sites`, `GET /sites/{id}`, `GET /regions`, `GET /contractors` больше не пишут в БД.
 - Дополнительно подтверждено, что после удаления скрытого auto-commit из `get_db` write-endpoints сохраняют данные только за счёт явных `commit()`.
 - На `2026-04-17` в `test_sync.py` добавлен regression test, который проверяет, что `GET /api/v1/sync/history-fields` не перехватывается маршрутом `/api/v1/sync/history/{site_id}`.
 - На 2026-04-21 подтверждён полный backend-набор `91/91`, frontend unit `55/55` и текущий e2e-run `69 passed, 1 skipped, 1 flaky`.
-- Текущий инвентарь в коде: `91 backend + 55 frontend unit + 7 e2e spec files`.
+- Текущий инвентарь в коде: `104 backend + 56 frontend unit + 7 e2e spec files`.
 - `test_sync.py` уже опирается на поле нового шаблона, а не на старые NI-колонки.
-- Во frontend unit-наборе теперь `55` Jest test cases (`test_utils.test.js` + `test_api.test.js`).
+- Во frontend unit-наборе теперь `56` Jest test cases (`test_utils.test.js` + `test_api.test.js`), включая `replaceExcelData()`.
 - Канонический backend-runner на VPS сейчас использует свежий `/tmp/rts-web-codex-venv`; `~/network-tracker/Tests/backend/.venv` на сервере по-прежнему неканоничен.
 - Для E2E канонический серверный прогон сейчас делается через Docker-образ Playwright, а не через локальный host Chromium.
 
@@ -72,7 +77,7 @@ Tests/
 │   ├── test_regions.py   # регионы: no-write-on-GET и ручной is_active
 │   ├── test_reports.py   # reports API и UCN-агрегации
 │   ├── test_sites.py     # объекты: фильтры, CRUD, права подрядчика
-│   ├── test_excel.py     # Excel export/import для нового UCN-шаблона
+│   ├── test_excel.py     # Excel export/import/replace для нового UCN-шаблона
 │   └── test_sync.py      # XLSM sync, история изменений, rollback
 ├── frontend/             # JS unit-тесты (Jest + jsdom)
 │   ├── package.json
@@ -306,6 +311,7 @@ docker run --rm \
 Для backend на VPS держите в уме текущее состояние окружения:
 
 - полный suite `91/91` подтверждён на сервере 2026-04-21;
+- после изменений 2026-06-04 в коде уже `104` backend tests, но полный suite под новый инвентарь ещё нужно подтвердить;
 - канонический runner сейчас: `/tmp/rts-web-codex-venv/bin/pytest`;
 - `~/network-tracker/Tests/backend/.venv` всё ещё требует нормализации.
 

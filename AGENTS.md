@@ -1,6 +1,6 @@
 # RTKS Tracker — контекст проекта
 
-Обновлено: 2026-04-21
+Обновлено: 2026-06-04
 
 ## Что это за система сейчас
 - Веб-приложение для трекинга строительства объектов мобильной сети.
@@ -28,6 +28,17 @@
   - обычные browser-endpoints принимают только `access` token;
   - `/sync` и `/sync/columns` принимают `excel_sync`, но только в рамках зашитого проекта;
   - `/sync` отвергает строки с `site_id`, относящимся к другому проекту.
+- С 2026-06-04 UCN-модуль переведён на новый рабочий шаблон трекера v2:
+  - активный Excel-контракт теперь содержит `67` колонок из `backend/app/core/columns.py`;
+  - колонка `ID объекта` остаётся ключом синхронизации и находится в шаблоне третьей колонкой;
+  - добавлены поля `Склад размещения АМС, город`, `Отчет о вертикальности АМС, план/факт`, `Заказ на СМР`, `Подготовка ПСЭЗ`, `КЗД на СМР`;
+  - поля `Р1` и `Р2` переиспользуют существующие DB-поля;
+  - старые активные колонки `ППО`, `ИД`, `Подписание заказа на СМР` убраны из Excel-контракта, но старые DB-поля физически не удалялись;
+  - добавлена миграция `007_ucn_template_v2_headers`;
+  - добавлен admin-only destructive replace-load: `POST /api/v1/excel/replace?project_id=...`;
+  - на `/projects.html` у admin появилась загрузка заполненного шаблона для проекта UCN с предупреждением об очистке старых площадок;
+  - обычный `POST /api/v1/excel/import` и XLSM sync по-прежнему только обновляют существующие объекты и не создают новые по неизвестному `ID объекта`;
+  - `backend/load_ucn_template_data.py --clear` теперь использует тот же validation-first replace-сервис.
 - С 2026-04-13 UCN-модуль переведён на новый серверный Excel-шаблон:
   - старый UCN-набор на проде очищен;
   - в базу загружено `172` строк нового шаблона;
@@ -45,7 +56,7 @@
 - **Auth:** JWT (`python-jose`) + `bcrypt==4.0.1`
 - **Frontend:** HTML/JS + Bootstrap 5, без frontend framework
 - **Инфраструктура:** Docker Compose, Nginx
-- **Деплой:** `rsync` с локальной машины на VPS, затем `docker compose restart ...`
+- **Деплой:** `git pull --ff-only origin main` на VPS, затем Alembic/restart; `rsync` остаётся fallback для временных проверок.
 
 ## Прод и инфраструктура
 
@@ -60,10 +71,9 @@
 - Папка проекта на сервере: `/home/<deploy-user>/network-tracker/`
 
 ### Ограничения сети на VPS
-- GitHub с VPS недоступен по SSH и HTTPS.
-- Поэтому `git pull` на VPS не используется.
-- Деплой делается только через `rsync` с локальной машины.
-- В Docker-контейнерах внешний DNS ограничен, поэтому сборка использует `network: host`.
+- На 2026-06-04 GitHub с VPS доступен, штатный деплой можно делать через `git pull --ff-only origin main`.
+- Старое ограничение "только rsync" больше не актуально для обычного деплоя, но `rsync` остаётся полезен для временных копий и безопасных проверочных прогонов.
+- В Docker-контейнерах внешний DNS может быть ограничен, поэтому сборка использует `network: host`.
 
 ### Полезные URL
 - Прод: `https://<public-base-url>/`
@@ -78,13 +88,22 @@
 - GitHub repo: текущий репозиторий
 - SSH remote: `git@github.com:<owner>/<repo>.git`
 - Push с локальной машины работает.
-- Pull на VPS не работает.
+- Pull на VPS работает.
 - Нормальный workflow:
   1. правки локально;
   2. `git commit`;
   3. `git push origin main`;
-  4. `rsync` на VPS;
-  5. `docker compose restart backend` и/или `docker compose restart nginx`.
+  4. на VPS: `git pull --ff-only origin main`;
+  5. `docker exec tracker_backend alembic upgrade head`;
+  6. `docker compose restart backend` и/или `docker compose restart nginx`.
+
+### Важный git-контекст на 2026-06-04
+- `main` и `origin/main` обновлены до коммита `a77d181`.
+- Свежие коммиты:
+  - `49c08a0` `Add admin Excel template reload`;
+  - `a77d181` `Shorten Alembic revision id`.
+- Первая попытка миграции на сервере упала из-за слишком длинного Alembic revision id для `alembic_version.version_num varchar(32)`.
+- Проблема исправлена коротким revision id `007_ucn_template_v2_headers`, после этого миграция, рестарт и admin-загрузка шаблона на проде прошли успешно.
 
 ### Важный git-контекст на 2026-04-13
 - Перед текущим обновлением документации локальный `main` и `origin/main` были синхронизированы на коммите `a02652a`.
@@ -261,7 +280,8 @@ RTS_Web/
 │   │       ├── 003_add_site_history.py
 │   │       ├── 004_add_site_ni_fields.py
 │   │       ├── 005_add_projects.py
-│   │       └── 006_add_ucn_template_v2_fields.py
+│   │       ├── 006_add_ucn_template_v2_fields.py
+│   │       └── 007_update_ucn_template_v2_headers.py
 │   ├── load_ucn_template_data.py
 │   ├── app/
 │   │   ├── api/v1/
@@ -372,6 +392,7 @@ GET /api/v1/reports/{report_key}?project_id=...
 ```text
 GET  /api/v1/excel/export?project_id=...
 POST /api/v1/excel/import?project_id=...
+POST /api/v1/excel/replace?project_id=...  # admin only, destructive replace-load
 ```
 
 ### Directories and logs
@@ -409,13 +430,14 @@ GET /api/health
 - `GET /api/v1/reports/` требует `project_id` и возвращает список отчётов, доступных для выбранного большого проекта.
 - Для placeholder-проектов `/api/v1/reports/` возвращает пустой список, а detail-route по ключу отчёта отдаёт `404`.
 - `contractor` в `/api/v1/reports/{report_key}` видит агрегаты только по своим объектам.
-- `GET /api/v1/excel/export` и `POST /api/v1/excel/import` работают только для проектов с `module_key = "ucn_sites_v1"`.
+- `GET /api/v1/excel/export`, `POST /api/v1/excel/import` и `POST /api/v1/excel/replace` работают только для проектов с `module_key = "ucn_sites_v1"`.
 - Excel import и XLSM sync обновляют только существующие объекты; неизвестный `ID объекта` возвращается как ошибка и не создаёт новый `sites`-record.
+- Только admin-only `POST /api/v1/excel/replace` очищает существующие `sites`/`site_history` проекта UCN и создаёт новый набор площадок из заполненного шаблона. Очистка выполняется только после полной валидации файла.
 - `POST /api/v1/sync` принимает `project_id`, но если его нет, backend берёт первый проект с `module_key = "ucn_sites_v1"`.
 - Сейчас это фактически означает fallback на `УЦН 2.0 2026 год`.
 
 ## База данных — текущее состояние
-- Текущий Alembic head: `006_add_ucn_template_v2_fields`
+- Текущий Alembic head: `007_ucn_template_v2_headers`
 - Важные таблицы:
   - `users`
   - `projects`
@@ -445,16 +467,22 @@ GET /api/health
     - `smr_order_*`
     - `equipment_receipt_*`
     - `pnr_*`
+    - `ams_storage_city`
+    - `ams_verticality_report_plan/fact`
+    - `smr_order`
+    - `psez_preparation`
+    - `kzd_smr`
 - На проде при последней проверке:
   - проектов: 3
-  - объектов UCN: 172
+  - UCN-набор успешно заменён через admin-загрузку заполненного шаблона 2026-06-04.
 
 ## Sites / UCN-модуль
 - Текущий рабочий доменный модуль — `ucn_sites_v1`.
-- С 2026-04-13 он работает на новом плоском UCN-шаблоне сервера.
+- С 2026-06-04 он работает на актуальном 67-колоночном шаблоне трекера v2.
 - Реестр колонок шаблона хранится в `backend/app/core/columns.py`.
 - Excel import/export/sync используют один и тот же набор колонок и ключ `ID объекта`.
 - Новые объекты через Excel import/XLSM sync больше не создаются; для неизвестного `ID объекта` backend возвращает ошибку.
+- Для полной замены набора площадок используется только admin-интерфейс загрузки шаблона в `frontend/projects.html` или серверный `load_ucn_template_data.py --clear`.
 - Базовые поля `Site` (`name`, `address`, `status`, `region`) достраиваются из шаблонных данных через `apply_template_derivations`.
 - `sites.html` показывает:
   - header проекта;
@@ -619,6 +647,13 @@ GET /api/health
   - `/sync` отвергает project mismatch и строки с `site_id` из другого проекта;
   - `GET /api/health` после деплоя возвращает `{"status":"ok"}`;
   - полный серверный прогон backend 2026-04-21: `91 passed`.
+- Excel template reload 2026-06-04 тоже уже задеплоен и подтверждён на проде:
+  - код подтянут на VPS из `origin/main`;
+  - миграция `007_ucn_template_v2_headers` применена;
+  - первая попытка с длинным Alembic revision id упала на `alembic_version.version_num varchar(32)`, после короткого id проблема снята;
+  - backend и nginx перезапущены;
+  - `http://127.0.0.1/api/health` может возвращать `301` из-за HTTPS-редиректа, проверка через HTTPS/внешний URL прошла успешно;
+  - admin открыл web-интерфейс и успешно загрузил заполненный новый шаблон в БД.
 
 ## Автотестовый контекст
 
@@ -706,12 +741,12 @@ npm test
   - site card/edit/history;
   - базовые admin pages.
 
-### Актуальный статус тестов на 2026-04-21
+### Актуальный статус тестов на 2026-06-04
 - Подтверждённый полный backend-прогон на VPS: `91/91` зелёных тестов.
 - Разбивка backend-набора:
-  - `test_auth.py` — 13
+  - `test_auth.py` — 23
   - `test_contractors.py` — 2
-  - `test_excel.py` — 10
+  - `test_excel.py` — 13
   - `test_projects.py` — 16
   - `test_regions.py` — 2
   - `test_reports.py` — 6
@@ -720,9 +755,10 @@ npm test
 - Подтверждённый frontend unit-прогон на VPS: `55/55`.
 - Подтверждённый E2E-прогон на VPS через Playwright Docker и текущую `playwright.config.js`: `69 passed`, `1 skipped`, `1 flaky`.
 - Текущий инвентарь в коде:
-  - backend: `91`;
-  - frontend unit: `55`;
+  - backend: `104`;
+  - frontend unit: `56`;
   - e2e spec files: `7`.
+- Для изменений 2026-06-04 полный regression не прогонялся; подтверждены статические проверки кода, соответствие заголовков шаблону и успешная ручная прод-загрузка через admin UI.
 - Канонический backend-runner на VPS сейчас:
   - `PYTHONPATH=~/network-tracker/backend /tmp/rts-web-codex-venv/bin/pytest -q`
 - `~/network-tracker/Tests/backend/.venv` на сервере по-прежнему разъехался по Python/pydantic_core и не считается каноническим runner'ом.
@@ -779,6 +815,7 @@ npm test
   - export для UCN возвращает `.xlsm`;
   - export/import для placeholder-проекта возвращают 400;
   - import нового шаблона требует `ID объекта`, обновляет только существующий объект и отвергает новые строки;
+  - admin replace-load требует `ID объекта`, валидирует файл до очистки и создаёт новый набор объектов только для UCN;
   - XLSM sync тоже не создаёт новый объект по неизвестному `ID объекта`.
 - Reports:
   - список отчётов зависит от `module_key` большого проекта;
@@ -792,7 +829,10 @@ npm test
 cd "/path/to/RTS_Web"
 git push origin main
 
-# Локально: деплой кода на VPS
+# VPS: скачать последний код из main
+ssh <vps-alias> "cd ~/network-tracker && git fetch origin && git pull --ff-only origin main"
+
+# Локально: fallback-деплой кода на VPS через rsync
 rsync -avz --exclude '.git' --exclude '__pycache__' --exclude '*.pyc' \
   --exclude '.DS_Store' --exclude '.env' --exclude '.Codex' \
   "/path/to/RTS_Web/" \
@@ -815,7 +855,7 @@ ssh <vps-alias> "cd ~/network-tracker && docker compose restart backend"
 ssh <vps-alias> "cd ~/network-tracker && docker compose restart nginx"
 
 # VPS: health
-ssh <vps-alias> "curl -s http://127.0.0.1/api/health"
+ssh <vps-alias> "curl -s -L http://127.0.0.1/api/health"
 
 # VPS: статус контейнеров
 ssh <vps-alias> "cd ~/network-tracker && docker compose ps"
@@ -843,6 +883,8 @@ ssh <vps-alias> "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/reports
 ```
 
 ## Последние важные коммиты
+- `a77d181` `Shorten Alembic revision id`
+- `49c08a0` `Add admin Excel template reload`
 - `c52ac2e` `Refresh admin lists after save`
 - `682f1f8` `Fix admin edit modals for users and projects`
 - `13a03cf` `Clarify profile username display`
@@ -864,6 +906,7 @@ ssh <vps-alias> "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/reports
 
 ## Ближайшие следующие шаги
 - Сменить пароль `admin` на проде.
+- Прогнать полный backend/frontend/e2e regression уже после обновления 2026-06-04.
 - Прогнать ручной smoke по UI:
   - login
   - выбор проекта
@@ -873,7 +916,6 @@ ssh <vps-alias> "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/reports
   - карточка объекта
   - export
   - базовый sync-сценарий
-- Решить, остаются ли тестовые `ID объекта` в текущем наборе или их нужно заменить на боевые.
 - Починить `~/network-tracker/Tests/backend/.venv`, чтобы backend-regression не зависел от `/tmp/rts-web-codex-venv`.
 - Подключить `Tests/e2e/tests/reports.spec.js` к текущей `Playwright` project matrix и отдельно подтвердить его серверным прогоном.
 - Расширить тесты до полноценного E2E-сценария `login -> project selection -> module`.
