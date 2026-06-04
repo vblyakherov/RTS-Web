@@ -1,6 +1,6 @@
 """Update UCN template v2 headers
 
-Revision ID: 007_update_ucn_template_v2_headers
+Revision ID: 007_ucn_template_v2_headers
 Revises: 006_add_ucn_template_v2_fields
 Create Date: 2026-06-04
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "007_update_ucn_template_v2_headers"
+revision = "007_ucn_template_v2_headers"
 down_revision = "006_add_ucn_template_v2_fields"
 branch_labels = None
 depends_on = None
