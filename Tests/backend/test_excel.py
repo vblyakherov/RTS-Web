@@ -16,7 +16,10 @@ import io
 from xml.etree import ElementTree
 from zipfile import ZipFile
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from conftest import token_headers
+from app.models.site import Site
 from app.services.auth import decode_token
 
 
@@ -223,6 +226,93 @@ async def test_import_new_template_updates_existing_site(client, seeded):
     assert macro_entry["new_value"] == "Дальний Восток"
 
 
+# ── Admin replace-load: первичная загрузка нового шаблона ─────────────────────
+
+async def test_admin_can_replace_ucn_project_sites_from_template(client, seeded, db_engine):
+    """Admin может очистить старый набор UCN и загрузить новые строки шаблона."""
+    headers = token_headers(seeded["admin_id"], "admin")
+    resp = await client.post(
+        f"/api/v1/excel/replace?project_id={seeded['ucn_project_id']}",
+        files={
+            "file": (
+                "ucn-reload.xlsx",
+                _reload_xlsx_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["success"] is True
+    assert data["deleted"] == 1
+    assert data["created"] == 2
+    assert data["errors_count"] == 0
+
+    list_resp = await client.get(
+        f"/api/v1/sites/?project_id={seeded['ucn_project_id']}",
+        headers=headers,
+    )
+    assert list_resp.status_code == 200
+    payload = list_resp.json()
+    assert payload["total"] == 2
+    site_ids = {item["site_id"] for item in payload["items"]}
+    assert site_ids == {"UCN-2026-0001", "UCN-2026-0002"}
+    assert seeded["site_site_id"] not in site_ids
+
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as session:
+        result = await session.execute(
+            select(Site).where(Site.site_id == "UCN-2026-0001")
+        )
+        site = result.scalar_one()
+        assert site.project_id == seeded["ucn_project_id"]
+        assert site.name == "с Новый"
+        assert site.region == "Амурская область"
+        assert site.ams_storage_city == "Хабаровск"
+        assert site.kzd_smr == "КЗД-СМР-1"
+        assert site.r1 == "готово"
+        assert site.r2 == "в работе"
+
+
+async def test_replace_ucn_project_sites_is_admin_only(client, seeded):
+    """Manager не может выполнить destructive replace-load."""
+    headers = token_headers(seeded["manager_id"], "manager")
+    resp = await client.post(
+        f"/api/v1/excel/replace?project_id={seeded['ucn_project_id']}",
+        files={
+            "file": (
+                "ucn-reload.xlsx",
+                _reload_xlsx_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 403
+
+
+async def test_replace_placeholder_project_returns_400(client, seeded):
+    """Первичная загрузка шаблона доступна только для ucn_sites_v1."""
+    headers = token_headers(seeded["admin_id"], "admin")
+    resp = await client.post(
+        f"/api/v1/excel/replace?project_id={seeded['placeholder_project_id']}",
+        files={
+            "file": (
+                "ucn-reload.xlsx",
+                _reload_xlsx_bytes(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 400
+    assert "not configured" in resp.json()["detail"].lower()
+
+
 # ── Вспомогательная функция ───────────────────────────────────────────────────
 
 def _minimal_xlsx_bytes(site_id: str = "BS-IMPORT-001") -> bytes:
@@ -273,6 +363,228 @@ def _minimal_xlsx_bytes(site_id: str = "BS-IMPORT-001") -> bytes:
     except ImportError:
         # Если openpyxl недоступен — возвращаем пустые байты (тест на расширение)
         return b"\x50\x4b\x03\x04"  # PK magic bytes (ZIP/XLSX)
+
+
+def _reload_xlsx_bytes() -> bytes:
+    """Создаёт файл с новым v2 header set и двумя новыми объектами."""
+    try:
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Лист1"
+        ws.append([
+            "№ п/п",
+            "ФИАС код",
+            "ID объекта",
+            "Макрорегион",
+            "Регион",
+            "Региональный филиал",
+            "Район",
+            "Сельское поселение",
+            "Наименование НП",
+            "WGS широта, гг",
+            "WGS долгота, гг",
+            "Дата получения разрешения на размещение АМС БС, план",
+            "Дата получения разрешения на размещение АМС БС, факт",
+            "ТУ на электропитание получены, дата",
+            "Дата выполнения ТУ ВЭС, план",
+            "Дата выполнения ТУ ВЭС, факт",
+            "Дата готовности ВОЛС, план",
+            "Дата готовности ВОЛС, факт",
+            "ПО",
+            "Заказ ПИР",
+            "Выезд на обследование для подготовки ИГИ, план",
+            "Выезд на обследование для подготовки ИГИ, факт",
+            "Подготовка ИГИ, план",
+            "Подготовка ИГИ, факт",
+            "Согласование ИГИ, план",
+            "Согласование ИГИ, факт",
+            "Тип АМС",
+            "Получение АМС, план",
+            "Склад размещения АМС, город",
+            "Получение АМС, факт",
+            "Заливка фундамента, план",
+            "Заливка фундамента, факт",
+            "Установка АМС, план",
+            "Установка АМС, факт",
+            "Отчет о вертикальности АМС, план",
+            "Отчет о вертикальности АМС, факт",
+            "Подготовка АППИ, КЖ, план",
+            "Подготовка АППИ, КЖ, факт",
+            "Согласование АППИ, КЖ, план",
+            "Согласование АППИ, КЖ, факт",
+            "Согласование АППИ КА, план",
+            "Согласование АППИ КА, факт",
+            "Выпуск РД ",
+            "Подписание ТУ/ЭС ",
+            "Сдача ЭС и ТУ в бумаге ",
+            "Приемка РД",
+            "КЗД на ПИР",
+            "Заказ на СМР",
+            "Выписка оборудования БС ",
+            "Требование ",
+            "Рейс БС",
+            "Получение оборудования, план",
+            "Получение оборудования, факт",
+            "Контакты бригады",
+            "Начало СМР, план",
+            "Начало СМР, факт",
+            "ПНР, план",
+            "ПНР, факт",
+            "Приемка, план",
+            "Приемка, факт",
+            "Справка о выполнении ТУ ",
+            "Передача Паспорта/АРБП/Справки о выполнении ТУ в ОГЭ ",
+            "Статус заказа на СМР",
+            "Подготовка ПСЭЗ",
+            "Р1",
+            "Р2",
+            "КЗД на СМР",
+        ])
+        ws.append([
+            1,
+            "2800000000001",
+            "UCN-2026-0001",
+            "Дальний Восток",
+            "Амурская область",
+            "РФ ДВ",
+            "Тестовый район",
+            "Тестовое поселение",
+            "с Новый",
+            52.01,
+            127.55,
+            "2026-05-01",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "ПО-1",
+            "ПИР-1",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Мачта",
+            "2026-05-10",
+            "Хабаровск",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "2026-05-20",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "КЗД-ПИР-1",
+            "СМР-1",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "2026-06-01",
+            "",
+            "",
+            "",
+            "2026-07-01",
+            "",
+            "",
+            "",
+            "в работе",
+            "готовится",
+            "готово",
+            "в работе",
+            "КЗД-СМР-1",
+        ])
+        ws.append([
+            2,
+            "2800000000002",
+            "UCN-2026-0002",
+            "Дальний Восток",
+            "Амурская область",
+            "РФ ДВ",
+            "Второй район",
+            "",
+            "с Второй",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "Владивосток",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "СМР-2",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "запланирован",
+            "",
+            "",
+            "",
+            "",
+        ])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf.read()
+    except ImportError:
+        return b"\x50\x4b\x03\x04"
 
 
 def _data_sheet_is_protected(xlsm_bytes: bytes) -> bool:

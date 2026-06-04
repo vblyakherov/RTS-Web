@@ -17,15 +17,13 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.crud.site import bulk_upsert_sites
+from app.crud.site import bulk_upsert_sites, replace_project_sites_from_rows
 from app.crud.site_history import make_history_batch_id
 from app.models.project import Project
-from app.models.site import Site
-from app.models.site_history import SiteHistory
 from app.services.excel import parse_excel_import
 
 
@@ -40,6 +38,8 @@ async def main(filepath: str, clear: bool) -> None:
         print(f"Предупреждений/ошибок парсинга: {len(parse_errors)}")
         for item in parse_errors[:20]:
             print(f"  - {item}")
+        if clear:
+            raise SystemExit("При --clear файл должен быть разобран без ошибок")
 
     if not rows:
         raise SystemExit("После парсинга не осталось валидных строк для импорта")
@@ -57,29 +57,22 @@ async def main(filepath: str, clear: bool) -> None:
             raise SystemExit("Проект `ucn-2026` не найден")
 
         if clear:
-            site_ids = list(
-                (
-                    await session.execute(
-                        select(Site.id).where(Site.project_id == project.id)
-                    )
-                ).scalars().all()
+            deleted, created, upsert_errors = await replace_project_sites_from_rows(
+                session,
+                rows,
+                project_id=project.id,
             )
-            if site_ids:
-                await session.execute(delete(SiteHistory).where(SiteHistory.site_id.in_(site_ids)))
-                await session.execute(delete(Site).where(Site.project_id == project.id))
-                await session.flush()
-                print(f"Удалено старых объектов UCN: {len(site_ids)}")
-            else:
-                print("Старых объектов UCN для удаления не найдено")
-
-        history_batch_id = make_history_batch_id("excel-import")
-        created, updated, upsert_errors = await bulk_upsert_sites(
-            session,
-            rows,
-            project_id=project.id,
-            user_id=None,
-            history_batch_id=history_batch_id,
-        )
+            updated = 0
+            print(f"Удалено старых объектов UCN: {deleted}")
+        else:
+            history_batch_id = make_history_batch_id("excel-import")
+            created, updated, upsert_errors = await bulk_upsert_sites(
+                session,
+                rows,
+                project_id=project.id,
+                user_id=None,
+                history_batch_id=history_batch_id,
+            )
         await session.commit()
 
     await engine.dispose()

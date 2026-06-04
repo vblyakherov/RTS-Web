@@ -36,7 +36,7 @@
                             <th>Объекты</th>
                             <th>Доступы</th>
                             <th>Статус</th>
-                            <th style="width:90px;"></th>
+                            <th style="width:130px;"></th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
@@ -107,6 +107,33 @@
     </div>
 </div>
 
+<div class="modal fade" id="replaceDataModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Загрузить данные шаблона
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning small mb-3">
+                    Старые объекты проекта <strong id="replaceTargetName"></strong> и их история будут удалены.
+                    Новый набор будет создан из строк выбранного Excel-файла.
+                </div>
+                <label class="form-label fw-semibold" for="replaceDataFile">Файл .xlsx или .xlsm</label>
+                <input class="form-control" type="file" id="replaceDataFile" accept=".xlsx,.xlsm">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="btnProjectReplaceConfirm">
+                    <i class="bi bi-upload me-1"></i>Удалить и загрузить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="deleteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -138,6 +165,7 @@ let currentUser = null;
 let projects = [];
 let isEditMode = false;
 let deleteProjectId = null;
+let replaceProjectId = null;
 const PROJECTS_PAGE_FLASH_KEY = 'projects_page_flash';
 
 async function init() {
@@ -154,6 +182,7 @@ async function init() {
     document.getElementById('btnAddProject').addEventListener('click', openCreateModal);
     document.getElementById('btnProjectSave').addEventListener('click', submitForm);
     document.getElementById('btnProjectDeleteConfirm').addEventListener('click', confirmDelete);
+    document.getElementById('btnProjectReplaceConfirm').addEventListener('click', confirmReplaceData);
     loadProjects();
 }
 
@@ -201,6 +230,14 @@ function renderTable() {
                         title="Редактировать">
                     <i class="bi bi-pencil"></i>
                 </button>
+                ${project.module_key === 'ucn_sites_v1' ? `
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary py-0 px-1 me-1"
+                        data-project-action="replace"
+                        data-project-id="${project.id}"
+                        title="Загрузить данные шаблона">
+                    <i class="bi bi-upload"></i>
+                </button>` : ''}
                 <button type="button"
                         class="btn btn-sm btn-outline-danger py-0 px-1"
                         data-project-action="delete"
@@ -226,6 +263,11 @@ function bindProjectRowActions(scope) {
 
             if (button.dataset.projectAction === 'edit') {
                 openEditModal(projectId);
+                return;
+            }
+
+            if (button.dataset.projectAction === 'replace') {
+                openReplaceModal(projectId);
                 return;
             }
 
@@ -324,6 +366,19 @@ function openDeleteModal(id) {
     document.getElementById('deleteTargetName').textContent = project.name;
 }
 
+function openReplaceModal(id) {
+    const project = projects.find(item => item.id === id);
+    if (!project || project.module_key !== 'ucn_sites_v1') return;
+    if (!showAppModal('replaceDataModal')) {
+        showToast('Не удалось открыть загрузку шаблона', 'danger');
+        return;
+    }
+
+    replaceProjectId = id;
+    document.getElementById('replaceTargetName').textContent = project.name;
+    document.getElementById('replaceDataFile').value = '';
+}
+
 async function confirmDelete() {
     if (!deleteProjectId) return;
     try {
@@ -332,6 +387,30 @@ async function confirmDelete() {
         window.location.replace(window.location.pathname + window.location.search);
     } catch (err) {
         showToast(err.message, 'danger');
+    }
+}
+
+async function confirmReplaceData() {
+    if (!replaceProjectId) return;
+    const input = document.getElementById('replaceDataFile');
+    const file = input.files[0];
+    if (!file) {
+        showToast('Выберите Excel-файл', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btnProjectReplaceConfirm');
+    btn.disabled = true;
+    try {
+        const result = await api.replaceExcelData(file, replaceProjectId);
+        hideAppModal('replaceDataModal');
+        showToast(`Загрузка завершена: удалено ${result.deleted}, создано ${result.created}`);
+        replaceProjectId = null;
+        await loadProjects();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
     }
 }
 

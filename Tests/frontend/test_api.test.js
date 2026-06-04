@@ -50,3 +50,35 @@ describe('reports api helpers', () => {
         expect(result).toEqual(payload);
     });
 });
+
+describe('excel api helpers', () => {
+    afterEach(() => {
+        jest.restoreAllMocks();
+        localStorage.clear();
+        delete global.fetch;
+    });
+
+    test('replaceExcelData отправляет файл в destructive admin endpoint', async () => {
+        localStorage.setItem('token', 'test-token');
+        global.fetch = jest.fn().mockResolvedValueOnce({
+            status: 200,
+            ok: true,
+            json: async () => ({ success: true, deleted: 1, created: 2 }),
+        });
+        const file = new File(['xlsx'], 'ucn.xlsx', {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+
+        const result = await apiUnderTest.replaceExcelData(file, 42);
+
+        expect(global.fetch).toHaveBeenCalledWith(
+            '/api/v1/excel/replace?project_id=42',
+            expect.objectContaining({
+                method: 'POST',
+                headers: { Authorization: 'Bearer test-token' },
+                body: expect.any(FormData),
+            })
+        );
+        expect(result).toEqual({ success: true, deleted: 1, created: 2 });
+    });
+});

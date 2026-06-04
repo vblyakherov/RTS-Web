@@ -90,9 +90,12 @@ class Site(Base):
     foundation_pour_plan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     foundation_pour_fact: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ams_receipt_plan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ams_storage_city: Mapped[str | None] = mapped_column(Text, nullable=True)
     ams_receipt_fact: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ams_installation_plan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ams_installation_fact: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ams_verticality_report_plan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ams_verticality_report_fact: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     ppo: Mapped[str | None] = mapped_column(Text, nullable=True)
     appi_kzh_preparation_plan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -108,6 +111,7 @@ class Site(Base):
     rd_acceptance: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     kzd_pir: Mapped[str | None] = mapped_column(Text, nullable=True)
     smr_order_signing: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    smr_order: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     bs_equipment_issuance: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     requirement: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -122,6 +126,8 @@ class Site(Base):
     passport_transfer_oge: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     id_docs: Mapped[str | None] = mapped_column(Text, nullable=True)
     smr_order_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    psez_preparation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kzd_smr: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # ── Данные из Excel (357 полей) ────────────────────────────────────────
     bs: Mapped[float | None] = mapped_column(Numeric(precision=18, scale=4), nullable=True)

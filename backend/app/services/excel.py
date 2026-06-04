@@ -14,14 +14,14 @@ from app.core.columns import (
     SYNC_KEY_COLUMN,
     get_column_by_db_name,
     get_column_by_header,
+    get_sync_excel_columns,
     normalize_excel_header,
 )
 from app.models.site import Site
 from app.services.ucn_template import apply_template_derivations
 
 
-EXPORT_COLUMNS = [(SYNC_KEY_COLUMN.db_name, SYNC_KEY_COLUMN.excel_header)]
-EXPORT_COLUMNS.extend((c.db_name, c.excel_header) for c in SITE_COLUMNS)
+EXPORT_COLUMNS = [(c.db_name, c.excel_header) for c in get_sync_excel_columns()]
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "templates" / "sync_template.xlsm"
 DATA_SHEET_NAME = "Data"

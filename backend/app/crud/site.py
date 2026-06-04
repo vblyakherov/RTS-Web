@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import delete, select, func, or_
 from sqlalchemy.orm import selectinload
 from app.models.site import Site, SiteStatus
+from app.models.site_history import SiteHistory
 from app.models.region import Region
 from app.schemas.site import SiteCreate, SiteUpdate, SiteFilter
 from app.crud.site_history import (
@@ -263,3 +264,91 @@ async def bulk_upsert_sites(
 
     await db.flush()
     return created, updated, errors
+
+
+async def replace_project_sites_from_rows(
+    db: AsyncSession,
+    rows: list[dict],
+    project_id: int,
+) -> tuple[int, int, list[str]]:
+    """
+    Destructive initial load for an admin-managed template replacement.
+
+    Validates all incoming rows first. If validation finds duplicates or key
+    conflicts, the existing project data is left untouched.
+    """
+    errors: list[str] = []
+    prepared_rows: list[dict] = []
+    incoming_site_ids: list[str] = []
+    seen_site_ids: set[str] = set()
+
+    for i, row in enumerate(rows, start=2):
+        site_id = str(row.get("site_id", "")).strip().upper()
+        if not site_id:
+            errors.append(f"Строка {i}: отсутствует site_id")
+            continue
+        if site_id in seen_site_ids:
+            errors.append(f"Строка {i} ({site_id}): дублирующийся ID объекта в файле")
+            continue
+
+        seen_site_ids.add(site_id)
+        incoming_site_ids.append(site_id)
+
+        create_data = dict(row)
+        create_data["site_id"] = site_id
+        create_data["project_id"] = project_id
+        create_data = apply_template_derivations(create_data)
+
+        if not create_data.get("name"):
+            errors.append(f"Строка {i} ({site_id}): пустое наименование НП")
+        if not create_data.get("region"):
+            errors.append(f"Строка {i} ({site_id}): пустой регион")
+        prepared_rows.append(create_data)
+
+    if incoming_site_ids:
+        result = await db.execute(
+            select(Site.site_id, Site.project_id).where(Site.site_id.in_(incoming_site_ids))
+        )
+        for site_id, existing_project_id in result.all():
+            if existing_project_id != project_id:
+                errors.append(
+                    f"ID объекта {site_id} уже существует в другом проекте"
+                )
+
+    if errors:
+        return 0, 0, errors
+
+    old_site_ids = list(
+        (
+            await db.execute(select(Site.id).where(Site.project_id == project_id))
+        ).scalars().all()
+    )
+    deleted = len(old_site_ids)
+    if old_site_ids:
+        await db.execute(delete(SiteHistory).where(SiteHistory.site_id.in_(old_site_ids)))
+        await db.execute(delete(Site).where(Site.project_id == project_id))
+        await db.flush()
+
+    region_cache: dict[str, int] = {}
+    created = 0
+    for row in prepared_rows:
+        region_name = row.get("region")
+        if region_name and region_name not in region_cache:
+            from app.crud.region import get_region_by_name
+            reg = await get_region_by_name(db, region_name)
+            if reg:
+                region_cache[region_name] = reg.id
+        if region_name and region_name in region_cache:
+            row["region_id"] = region_cache[region_name]
+
+        site_data = {
+            field: value
+            for field, value in row.items()
+            if value is not None and hasattr(Site, field)
+        }
+        site_data["project_id"] = project_id
+        db.add(Site(**site_data))
+        created += 1
+
+    await db.flush()
+    return deleted, created, []

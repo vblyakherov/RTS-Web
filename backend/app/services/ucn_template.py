@@ -67,6 +67,7 @@ def _merge_site_state(site: Site | None, payload: Mapping[str, Any]) -> dict[str
             "ams_receipt_fact",
             "ams_installation_fact",
             "rd_release",
+            "smr_order",
             "smr_order_signing",
             "equipment_receipt_fact",
             "pnr_fact_stage",
@@ -104,7 +105,12 @@ def _derive_status(values: Mapping[str, Any]) -> SiteStatus:
         return SiteStatus.accepted
     if values.get("pnr_fact_stage"):
         return SiteStatus.testing
-    if values.get("actual_start") or values.get("equipment_receipt_fact") or values.get("smr_order_signing"):
+    if (
+        values.get("actual_start")
+        or values.get("equipment_receipt_fact")
+        or values.get("smr_order_signing")
+        or values.get("smr_order")
+    ):
         return SiteStatus.construction
     if status_text and any(token in status_text.lower() for token in _STATUS_TEXT_CONSTRUCTION):
         return SiteStatus.construction

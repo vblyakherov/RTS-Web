@@ -3,13 +3,13 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from app.database import get_db
-from app.crud.site import get_all_sites_for_export, bulk_upsert_sites
+from app.crud.site import get_all_sites_for_export, bulk_upsert_sites, replace_project_sites_from_rows
 from app.crud.project import get_project_for_user
 from app.crud.site_history import make_history_batch_id
 from app.crud.log import write_log
 from app.services.excel import ExcelTemplateError, export_sites_to_excel, parse_excel_import
 from app.services.auth import EXCEL_SYNC_TOKEN_TYPE, create_access_token
-from app.api.deps import require_manager, require_any, get_client_ip
+from app.api.deps import require_admin, require_manager, require_any, get_client_ip
 from app.models.user import User, UserRole
 from app.config import settings
 from app.services.reference_sync import sync_regions_from_sites
@@ -141,4 +141,68 @@ async def import_excel(
         "total_processed": created + updated,
         "errors_count": len(all_errors),
         "errors": all_errors,
+    }
+
+
+@router.post("/replace")
+async def replace_excel_data(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+    request: Request = None,
+):
+    """Полная admin-only перезагрузка объектов проекта из нового шаблона."""
+    if not file.filename.endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="Only .xlsx/.xlsm files are supported")
+
+    raw = await file.read()
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 20 MB)")
+
+    project = await get_project_for_user(db, project_id, current_user, allow_inactive=True)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project.module_key != "ucn_sites_v1":
+        raise HTTPException(status_code=400, detail="Excel replace-load is not configured for this project yet")
+
+    rows, parse_errors = parse_excel_import(raw)
+    if parse_errors:
+        raise HTTPException(status_code=422, detail={"parse_errors": parse_errors})
+    if not rows:
+        raise HTTPException(status_code=422, detail={"parse_errors": ["В файле нет строк для загрузки"]})
+
+    deleted, created, replace_errors = await replace_project_sites_from_rows(
+        db,
+        rows,
+        project_id=project_id,
+    )
+    if replace_errors:
+        raise HTTPException(status_code=422, detail={"errors": replace_errors})
+
+    await sync_regions_from_sites(db)
+
+    await write_log(
+        db,
+        "excel_replace",
+        user_id=current_user.id,
+        detail=f"Replace-load: deleted={deleted}, created={created}",
+        extra={
+            "filename": file.filename,
+            "deleted": deleted,
+            "created": created,
+            "project_id": project.id,
+            "project_code": project.code,
+        },
+        ip_address=get_client_ip(request) if request else None,
+    )
+    await db.commit()
+
+    return {
+        "success": True,
+        "deleted": deleted,
+        "created": created,
+        "total_processed": created,
+        "errors_count": 0,
+        "errors": [],
     }

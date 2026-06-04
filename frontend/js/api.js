@@ -272,7 +272,7 @@ const api = {
         }
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: 'Ошибка экспорта' }));
-            throw new Error(err.detail || 'Ошибка экспорта');
+            throw new Error(formatApiErrorDetail(err.detail || 'Ошибка экспорта'));
         }
         return res.blob();
     },
@@ -293,7 +293,28 @@ const api = {
         }
         if (!res.ok) {
             const err = await res.json().catch(() => ({ detail: 'Ошибка импорта' }));
-            throw new Error(err.detail || 'Ошибка импорта');
+            throw new Error(formatApiErrorDetail(err.detail || 'Ошибка импорта'));
+        }
+        return res.json();
+    },
+
+    async replaceExcelData(file, projectId) {
+        const token = this.getToken();
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch(`${API_BASE}/excel/replace?project_id=${encodeURIComponent(projectId)}`, {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: formData,
+        });
+        if (res.status === 401) {
+            this.removeToken();
+            window.location.href = '/login.html';
+            return;
+        }
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: 'Ошибка загрузки шаблона' }));
+            throw new Error(formatApiErrorDetail(err.detail || 'Ошибка загрузки шаблона'));
         }
         return res.json();
     },
