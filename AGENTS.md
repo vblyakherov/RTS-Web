@@ -1,6 +1,6 @@
 # RTKS Tracker — контекст проекта
 
-Обновлено: 2026-06-04
+Обновлено: 2026-06-05
 
 ## Что это за система сейчас
 - Веб-приложение для трекинга строительства объектов мобильной сети.
@@ -39,6 +39,14 @@
   - на `/projects.html` у admin появилась загрузка заполненного шаблона для проекта UCN с предупреждением об очистке старых площадок;
   - обычный `POST /api/v1/excel/import` и XLSM sync по-прежнему только обновляют существующие объекты и не создают новые по неизвестному `ID объекта`;
   - `backend/load_ucn_template_data.py --clear` теперь использует тот же validation-first replace-сервис.
+- С 2026-06-05 закрыт prod-инцидент XLSM sync:
+  - свежескачанный Excel спрашивал логин/пароль, потому что `backend/templates/sync_template.xlsm` всё ещё содержал старый бинарный VBA;
+  - старый `SyncNow()` начинался с `DoLogin()`, а `SERVER_URL` внутри template указывал на старый HTTP/IP;
+  - `vba/modSync.bas` переведён на `EnsureSyncSession()`, который сначала использует `_Config.auth_token`;
+  - `GET /api/v1/auth/me` допускает `excel_sync` token только для probe, а `PATCH /api/v1/auth/me` остался на строгом `access` token;
+  - добавлен `ops/patch_nginx_legacy_vba.py` для legacy routes `/auth/*` и `/sync*` в prod nginx;
+  - `backend/templates/sync_template.xlsm` вручную обновлён в Excel и теперь содержит новый VBA-контейнер;
+  - после деплоя `3fe4957` и нового download XLSM sync подтверждён на проде без повторного запроса пароля.
 - С 2026-04-13 UCN-модуль переведён на новый серверный Excel-шаблон:
   - старый UCN-набор на проде очищен;
   - в базу загружено `172` строк нового шаблона;
@@ -97,13 +105,18 @@
   5. `docker exec tracker_backend alembic upgrade head`;
   6. `docker compose restart backend` и/или `docker compose restart nginx`.
 
-### Важный git-контекст на 2026-06-04
-- `main` и `origin/main` обновлены до коммита `a77d181`.
+### Важный git-контекст на 2026-06-05
+- `main` и `origin/main` обновлены до коммита `3fe4957`.
 - Свежие коммиты:
+  - `3fe4957` `Refresh Excel sync template VBA`;
+  - `613c44c` `Allow Excel token auth probe`;
+  - `59d80c3` `Add nginx legacy VBA patch script`;
+  - `0ebd6bb` `Fix Excel sync token reuse`;
   - `49c08a0` `Add admin Excel template reload`;
   - `a77d181` `Shorten Alembic revision id`.
 - Первая попытка миграции на сервере упала из-за слишком длинного Alembic revision id для `alembic_version.version_num varchar(32)`.
 - Проблема исправлена коротким revision id `007_ucn_template_v2_headers`, после этого миграция, рестарт и admin-загрузка шаблона на проде прошли успешно.
+- Важно для VPS: prod `docker-compose.yml` и `nginx/nginx.conf` могут содержать локальный SSL/Docker config. Перед `git reset --hard origin/main` сохранять их в `/tmp`, после reset возвращать и применять `ops/patch_nginx_legacy_vba.py`.
 
 ### Важный git-контекст на 2026-04-13
 - Перед текущим обновлением документации локальный `main` и `origin/main` были синхронизированы на коммите `a02652a`.
@@ -555,6 +568,15 @@ GET /api/health
   - `username`
   - `project_id`
 - Кнопка `SyncNow` создаётся backend автоматически.
+- Актуальный VBA template на 2026-06-05:
+  - `SERVER_URL = "https://tracker.rtk-service.ru"`;
+  - `API_BASE = "/api/v1"`;
+  - `KEY_HEADER = "ID объекта"`;
+  - `CFG_PROJECT_ID = "project_id"`;
+  - `SyncNow()` сначала вызывает `EnsureSyncSession()` и использует встроенный `_Config.auth_token`;
+  - старого обязательного `DoLogin()` в начале `SyncNow()` больше нет.
+- Если править `vba/*.bas`, одного git commit этих файлов недостаточно: нужно заново сохранить `backend/templates/sync_template.xlsm` с обновлённым `vbaProject.bin`.
+- На Mac Excel import `.bas` может падать с `System Error &H80004005`; рабочий обход — копировать код модулей через короткий ASCII-путь или напрямую через VBA Editor, затем сохранить template и проверить source внутри `xl/vbaProject.bin`.
 
 ### Контракт sync
 - Клиент отправляет:
@@ -654,6 +676,13 @@ GET /api/health
   - backend и nginx перезапущены;
   - `http://127.0.0.1/api/health` может возвращать `301` из-за HTTPS-редиректа, проверка через HTTPS/внешний URL прошла успешно;
   - admin открыл web-интерфейс и успешно загрузил заполненный новый шаблон в БД.
+- XLSM sync fix 2026-06-05 тоже уже задеплоен и подтверждён на проде:
+  - `main` доведён до `3fe4957`;
+  - prod SSL/Docker nginx-конфиги сохранялись перед hard reset и возвращались после reset;
+  - `ops/patch_nginx_legacy_vba.py` применён к `nginx/nginx.conf`;
+  - `docker exec tracker_nginx nginx -t` проходил успешно;
+  - новый Excel скачан уже после обновления `sync_template.xlsm`;
+  - ручной sync из Excel больше не спрашивает логин/пароль и работает.
 
 ## Автотестовый контекст
 
@@ -741,12 +770,12 @@ npm test
   - site card/edit/history;
   - базовые admin pages.
 
-### Актуальный статус тестов на 2026-06-04
+### Актуальный статус тестов на 2026-06-05
 - Подтверждённый полный backend-прогон на VPS: `91/91` зелёных тестов.
 - Разбивка backend-набора:
-  - `test_auth.py` — 23
+  - `test_auth.py` — 24
   - `test_contractors.py` — 2
-  - `test_excel.py` — 13
+  - `test_excel.py` — 16
   - `test_projects.py` — 16
   - `test_regions.py` — 2
   - `test_reports.py` — 6
@@ -755,10 +784,10 @@ npm test
 - Подтверждённый frontend unit-прогон на VPS: `55/55`.
 - Подтверждённый E2E-прогон на VPS через Playwright Docker и текущую `playwright.config.js`: `69 passed`, `1 skipped`, `1 flaky`.
 - Текущий инвентарь в коде:
-  - backend: `104`;
+  - backend: `108`;
   - frontend unit: `56`;
   - e2e spec files: `7`.
-- Для изменений 2026-06-04 полный regression не прогонялся; подтверждены статические проверки кода, соответствие заголовков шаблону и успешная ручная прод-загрузка через admin UI.
+- Для изменений 2026-06-05 полный regression не прогонялся; подтверждены статические проверки кода, соответствие VBA source внутри `sync_template.xlsm`, stale hash check, `py_compile` для `Tests/backend/test_excel.py` и ручной prod smoke XLSM sync.
 - Канонический backend-runner на VPS сейчас:
   - `PYTHONPATH=~/network-tracker/backend /tmp/rts-web-codex-venv/bin/pytest -q`
 - `~/network-tracker/Tests/backend/.venv` на сервере по-прежнему разъехался по Python/pydantic_core и не считается каноническим runner'ом.
@@ -883,6 +912,10 @@ ssh <vps-alias> "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/reports
 ```
 
 ## Последние важные коммиты
+- `3fe4957` `Refresh Excel sync template VBA`
+- `613c44c` `Allow Excel token auth probe`
+- `59d80c3` `Add nginx legacy VBA patch script`
+- `0ebd6bb` `Fix Excel sync token reuse`
 - `a77d181` `Shorten Alembic revision id`
 - `49c08a0` `Add admin Excel template reload`
 - `c52ac2e` `Refresh admin lists after save`
@@ -906,7 +939,7 @@ ssh <vps-alias> "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/reports
 
 ## Ближайшие следующие шаги
 - Сменить пароль `admin` на проде.
-- Прогнать полный backend/frontend/e2e regression уже после обновления 2026-06-04.
+- Прогнать полный backend/frontend/e2e regression уже после обновления 2026-06-05.
 - Прогнать ручной smoke по UI:
   - login
   - выбор проекта

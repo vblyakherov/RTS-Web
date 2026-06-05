@@ -488,6 +488,15 @@ if not user or not verify_password(...):
 - продовая загрузка заполненного шаблона через admin UI подтверждена;
 - security-пункты этого плана по limiter/XSS/cookie остаются актуальными и не были закрыты в рамках шаблонного обновления.
 
+Статус на 2026-06-05:
+
+- после включения LDAP и нового XLSM export выявлен stale VBA container в `backend/templates/sync_template.xlsm`;
+- backend получил совместимость для `excel_sync` token на `GET /api/v1/auth/me`, при этом mutating profile route `PATCH /api/v1/auth/me` остался browser-only;
+- для старых VBA route-paths добавлен `ops/patch_nginx_legacy_vba.py`, который вставляет legacy nginx routes `/auth/*` и `/sync*`;
+- `sync_template.xlsm` вручную обновлён: `SyncNow()` использует `EnsureSyncSession()` и встроенный `_Config.auth_token`, а не обязательный `DoLogin()`;
+- prod smoke после нового скачивания XLSM подтвердил, что sync больше не спрашивает логин/пароль;
+- limiter/XSS/cookie задачи по-прежнему остаются следующими security этапами.
+
 ### Этап 3. Закрыть реальные XSS-синки
 
 Цель:

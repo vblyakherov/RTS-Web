@@ -1,10 +1,10 @@
 # XLSM template
 
-Актуализировано: 2026-06-04
+Актуализировано: 2026-06-05
 
 Положите в эту папку файл `sync_template.xlsm`.
 
-Он должен быть создан вручную в Microsoft Excel на Windows и содержать:
+Он должен быть создан или обновлён вручную в Microsoft Excel и содержать:
 
 - лист `Data`
 - VBA-модули из каталога `vba/` в корне репозитория
@@ -20,6 +20,8 @@
 - на 2026-06-04 активный UCN-контракт содержит `67` колонок;
 - ключ синхронизации в новом шаблоне: Excel-колонка `ID объекта` (`site_id`), третья колонка файла;
 - изменения в `vba/*.bas` и `vba/*.cls` сами по себе не попадают в export, пока вручную не обновлён `sync_template.xlsm`.
+- на 2026-06-05 `sync_template.xlsm` уже обновлён и содержит актуальные `modConfig`/`modSync`;
+- если свежескачанный Excel снова спрашивает пароль сразу при sync, сначала проверить VBA внутри этого template.
 
 Сервис `/api/v1/excel/export` собирает новый `.xlsm` через `xlsxwriter`, подмешивает VBA из `sync_template.xlsm`, создаёт:
 
@@ -47,6 +49,22 @@
 - на 2026-06-04 Excel Data headers обновлены под новый 67-колоночный шаблон трекера v2;
 - `POST /api/v1/excel/replace` и admin UI на `/projects.html` используют тот же реестр колонок, но не меняют VBA-контейнер;
 - полный серверный backend-regression 2026-04-21 прошёл с предыдущим XLSM/export-контуром; после 2026-06-04 требуется новый полный regression.
+
+Дополнение на 2026-06-05:
+
+- `SyncNow()` в template больше не начинает работу с обязательного `DoLogin()`;
+- актуальный старт sync: загрузить сессию через `EnsureSyncSession()`, использовать `_Config.auth_token`, затем идти в `/sync/columns` и `/sync`;
+- `modConfig.SERVER_URL` внутри template: `https://tracker.rtk-service.ru`;
+- `GET /api/v1/auth/me` на backend принимает `excel_sync` token только для legacy probe, `PATCH /api/v1/auth/me` остаётся browser-only;
+- для старых macro routes на prod nginx используется `ops/patch_nginx_legacy_vba.py`;
+- уже скачанные старые `.xlsm` не обновляются автоматически, пользователю нужно скачать файл заново.
+
+Проверка после ручного обновления template:
+
+- открыть `backend/templates/sync_template.xlsm` в Excel VBA Editor;
+- в `modConfig` проверить `SERVER_URL`, `API_BASE`, `CFG_PROJECT_ID`, `KEY_HEADER`;
+- в `modSync` проверить, что `Public Sub SyncNow()` содержит `EnsureSyncSession()` и не содержит старый старт `If Not DoLogin()`;
+- после сохранения проверить, что `xl/vbaProject.bin` не совпадает со старым hash `96aea6b90fdbe4dfa718840964fb2bafadcbdae08e8530eb503a361c270bf1ea`.
 
 Если файла `sync_template.xlsm` здесь нет, `GET /api/v1/excel/export` вернёт ошибку с подсказкой.
 
