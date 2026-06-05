@@ -6,9 +6,7 @@ Option Explicit
 ' ============================================================
 
 ' --- Сервер ---
-' Public repo note: keep only a placeholder here. Real deployment URL is set
-' per environment when the workbook sources are assembled for a target stand.
-Public Const SERVER_URL     As String = "https://your-tracker.example.com"
+Public Const SERVER_URL     As String = "https://tracker.rtk-service.ru"
 Public Const API_BASE       As String = "/api/v1"
 
 ' --- Эндпоинты ---

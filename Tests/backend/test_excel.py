@@ -13,6 +13,7 @@ test_excel.py — тесты Excel-экспорта с привязкой к м�
   - POST /excel/import — не создаёт новые объекты, только обновляет существующие
 """
 import io
+import hashlib
 import re
 from pathlib import Path
 from xml.etree import ElementTree
@@ -26,6 +27,9 @@ from app.services.auth import decode_token
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+STALE_SYNC_TEMPLATE_VBA_SHA256 = (
+    "96aea6b90fdbe4dfa718840964fb2bafadcbdae08e8530eb503a361c270bf1ea"
+)
 
 
 # ── Экспорт: проверка module_key ───────────────────────────────────────────────
@@ -149,6 +153,15 @@ def test_vba_sync_uses_embedded_excel_token_without_browser_auth_probe():
     assert "CheckToken" not in ensure_session
 
     assert 'JsonObjAdd(reqBody, "project_id", CLng(g_ProjectId))' in sync_src
+
+
+def test_sync_template_vba_project_is_refreshed_from_sources():
+    """XLSM template must not keep the stale VBA binary that starts with DoLogin."""
+    template_path = REPO_ROOT / "backend" / "templates" / "sync_template.xlsm"
+    with ZipFile(template_path) as archive:
+        vba_project = archive.read("xl/vbaProject.bin")
+
+    assert hashlib.sha256(vba_project).hexdigest() != STALE_SYNC_TEMPLATE_VBA_SHA256
 
 
 def test_nginx_keeps_legacy_vba_sync_routes_compatible():
