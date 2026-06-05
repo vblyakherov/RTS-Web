@@ -342,8 +342,8 @@ async def test_me_with_invalid_token(client, seeded):
     assert resp.status_code == 401
 
 
-async def test_me_rejects_excel_sync_token(client, seeded):
-    """Обычный auth-endpoint не должен принимать scoped Excel token."""
+async def test_me_accepts_excel_sync_token_for_legacy_vba_probe(client, seeded):
+    """GET /auth/me принимает excel_sync token для старого XLSM CheckToken."""
     headers = token_headers(
         seeded["admin_id"],
         "admin",
@@ -351,6 +351,21 @@ async def test_me_rejects_excel_sync_token(client, seeded):
         project_id=seeded["ucn_project_id"],
     )
     resp = await client.get("/api/v1/auth/me", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["username"] == "t_admin"
+    assert data["role"] == "admin"
+
+
+async def test_patch_me_rejects_excel_sync_token(client, seeded):
+    """Excel token не должен работать на browser mutating endpoint."""
+    headers = token_headers(
+        seeded["admin_id"],
+        "admin",
+        token_type="excel_sync",
+        project_id=seeded["ucn_project_id"],
+    )
+    resp = await client.patch("/api/v1/auth/me", json={"full_name": "Blocked"}, headers=headers)
     assert resp.status_code == 401
 
 

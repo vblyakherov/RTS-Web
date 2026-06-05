@@ -8,7 +8,11 @@ from app.crud.user import get_user_by_username, update_user, upsert_ldap_user
 from app.crud.log import write_log
 from app.services.auth import verify_password, create_access_token
 from app.services.ldap_auth import authenticate_ldap_user
-from app.api.deps import get_current_user, get_client_ip
+from app.api.deps import (
+    get_client_ip,
+    get_current_user,
+    get_current_user_or_excel_sync_user,
+)
 from app.models.user import User
 from app.limiter import limiter
 
@@ -83,7 +87,7 @@ async def login(
 
 
 @router.get("/me", response_model=UserMe)
-async def me(current_user: User = Depends(get_current_user)):
+async def me(current_user: User = Depends(get_current_user_or_excel_sync_user)):
     return current_user
 
 

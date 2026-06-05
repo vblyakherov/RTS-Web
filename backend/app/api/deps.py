@@ -61,6 +61,17 @@ async def get_current_user(
     )
 
 
+async def get_current_user_or_excel_sync_user(
+    token_data: TokenData = Depends(get_token_data),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    return await _get_active_user(
+        token_data,
+        db,
+        allowed_token_types={ACCESS_TOKEN_TYPE, EXCEL_SYNC_TOKEN_TYPE},
+    )
+
+
 async def get_sync_auth_context(
     token_data: TokenData = Depends(get_token_data),
     db: AsyncSession = Depends(get_db),
